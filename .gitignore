@@ -16,3 +16,7 @@ dist/
 .DS_Store
 Thumbs.db
 .vscode/settings.json
+File-based/site-packages/
+*.dll
+.venv/
+*.dll
