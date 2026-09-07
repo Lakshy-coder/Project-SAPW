@@ -1,0 +1,153 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  role      String   @default("USER")
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  jobs      Job[]
+}
+
+model Project {
+  id            String     @id @default(uuid())
+  name          String
+  policyProfile String     @default("DEFAULT")
+  jobs          Job[]
+  documents     Document[]
+}
+
+model Job {
+  id              String         @id @default(uuid())
+  project         Project        @relation(fields: [projectId], references: [id])
+  projectId       String
+  user            User           @relation(fields: [userId], references: [id])
+  userId          String
+  workflowVersion String         @default("1.0")
+  status          String         @default("QUEUED")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  nodes           JobNode[]
+  artifacts       Artifact[]
+  toolExecutions  ToolExecution[]
+  auditEvents     AuditEvent[]
+  executionReceipt ExecutionReceipt?
+}
+
+model JobNode {
+  id          String   @id @default(uuid())
+  job         Job      @relation(fields: [jobId], references: [id])
+  jobId       String
+  nodeType    String
+  state       String   @default("PENDING")
+  inputsHash  String?
+  outputsHash String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  verifications Verification[]
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  project     Project  @relation(fields: [projectId], references: [id])
+  projectId   String
+  version     String
+  sha256      String
+  metadata    Json?
+  accessClass String   @default("RESTRICTED")
+  chunks      Chunk[]
+}
+
+model Chunk {
+  id           String   @id @default(uuid())
+  document     Document @relation(fields: [documentId], references: [id])
+  documentId   String
+  location     String
+  lexicalRef   String?
+  vectorRef    String?
+}
+
+model Model {
+  id              String   @id @default(uuid())
+  provider        String
+  modelName       String
+  version         String
+  capabilities    String[]
+  resourceProfile Json?
+}
+
+model Tool {
+  id           String   @id @default(uuid())
+  version      String
+  capabilities String[]
+  inputSchema  Json
+  outputSchema Json
+  riskLevel    String
+}
+
+model ToolExecution {
+  id         String   @id @default(uuid())
+  job        Job      @relation(fields: [jobId], references: [id])
+  jobId      String
+  toolId     String
+  inputsHash String
+  outputHash String?
+  durationMs Int?
+  status     String   @default("RUNNING")
+}
+
+model Verification {
+  id           String   @id @default(uuid())
+  node         JobNode  @relation(fields: [nodeId], references: [id])
+  nodeId       String
+  verifierType String
+  status       String   @default("PENDING")
+  evidence     Json?
+  version      String
+}
+
+model Artifact {
+  id              String   @id @default(uuid())
+  job             Job      @relation(fields: [jobId], references: [id])
+  jobId           String
+  type            String
+  path            String
+  sha256          String
+  templateVersion String?
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  job          Job      @relation(fields: [jobId], references: [id])
+  jobId        String
+  seq          Int      @default(autoincrement())
+  parentHashes String[]
+  inputHash    String
+  outputHash   String
+  blockHash    String
+  createdAt    DateTime @default(now())
+}
+
+model ExecutionReceipt {
+  id              String   @id @default(uuid())
+  job             Job      @relation(fields: [jobId], references: [id])
+  jobId           String   @unique
+  rootHash        String
+  signature       String
+  keyId           String
+  verifierVersion String
+}
+
+model Policy {
+  id            String   @id @default(uuid())
+  version       String
+  rules         Json
+  effectiveFrom DateTime @default(now())
+  scope         String
+}
