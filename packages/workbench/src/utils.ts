@@ -4,23 +4,78 @@ import type { WsEvent } from './api';
 
 export function useWebSocket(onEvent: (e: WsEvent) => void) {
   const wsRef = useRef<WebSocket | null>(null);
+  const onEventRef = useRef(onEvent);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldReconnectRef = useRef(true);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
+
+  useEffect(() => {
+    shouldReconnectRef.current = true;
+
     const connect = () => {
+      if (!shouldReconnectRef.current) return;
+
       try {
         const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
-        ws.onopen  = () => setConnected(true);
-        ws.onclose = () => { setConnected(false); setTimeout(connect, 2500); };
-        ws.onerror = () => ws.close();
-        ws.onmessage = (ev) => {
-          try { onEvent(JSON.parse(ev.data)); } catch {}
+
+        ws.onopen = () => {
+          setConnected(true);
         };
-      } catch { setTimeout(connect, 2500); }
+
+        ws.onclose = () => {
+          setConnected(false);
+          if (!shouldReconnectRef.current) return;
+          if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+          }
+          reconnectTimerRef.current = setTimeout(connect, 2500);
+        };
+
+        ws.onerror = () => {
+          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+            ws.close();
+          }
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            onEventRef.current(message);
+          } catch {
+            // Ignore malformed WS payloads.
+          }
+        };
+      } catch {
+        if (!shouldReconnectRef.current) return;
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+        }
+        reconnectTimerRef.current = setTimeout(connect, 2500);
+      }
     };
+
     connect();
-    return () => wsRef.current?.close();
+
+    return () => {
+      shouldReconnectRef.current = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.onerror = null;
+        wsRef.current.onmessage = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      setConnected(false);
+    };
   }, []);
 
   return connected;

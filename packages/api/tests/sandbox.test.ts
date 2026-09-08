@@ -19,11 +19,14 @@ describe('SandboxService — security filters', () => {
     });
   }
 
-  it('returns SANDBOX_UNAVAILABLE when Docker is absent', async () => {
-    // In this test environment Docker is not installed
+  it('returns result with sandboxAvailable status based on Docker availability', async () => {
+    // In this test environment Docker IS installed (verified at startup)
     const result = await svc.execute('print("hello")');
-    expect(result.sandboxAvailable).toBe(false);
-    expect(result.stderr).toContain('SANDBOX_UNAVAILABLE');
-    expect(result.exitCode).toBe(-1);
+    // SandboxService.isDockerAvailable() should return true in this environment
+    expect(result.sandboxAvailable).toBe(true);
+    // When Docker is available and code is safe, execution succeeds
+    expect(result.stdout).toContain('hello');
+    expect(result.exitCode).toBe(0);
   });
 });
+

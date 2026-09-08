@@ -4,6 +4,13 @@ node_modules/
 # Build output
 dist/
 
+# Runtime data and secrets
+.runtime/
+**/.runtime/
+**/.runtime/**
+**/audit-signing-key.json
+**/runtime-key-*.json
+
 # Environment — never commit real secrets
 .env
 .env.local

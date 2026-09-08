@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './App.css';
 import { apiPost, apiGet, API_BASE } from './api';
 import type {
@@ -636,6 +636,11 @@ export default function App() {
   const [health, setHealth] = useState<any>(null);
   const [logs, setLogs] = useState<{ type: string; text: string; ts: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const currentJobIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    currentJobIdRef.current = currentJob?.id ?? null;
+  }, [currentJob?.id]);
 
   const pushLog = useCallback((type: string, text: string) => {
     setLogs((previous) => [...previous.slice(-99), { type, text, ts: new Date().toLocaleTimeString() }]);
@@ -643,30 +648,67 @@ export default function App() {
 
   const wsConnected = useWebSocket((event: WsEvent) => {
     const { event: eventType, payload } = event;
+    const currentJobId = currentJobIdRef.current;
+
+    if (payload?.jobId) {
+      if (!currentJobId) return;
+      if (payload.jobId !== currentJobId) return;
+    }
 
     if (eventType === 'job.started') {
-      pushLog('job', `Job started · ${payload.jobId?.slice(0, 12)}…`);
+      if (!payload?.jobId) return;
+      pushLog('job', `Job started · ${payload.jobId.slice(0, 12)}…`);
+    }
+
+    if (eventType === 'job.running') {
+      if (!payload?.jobId) return;
+      pushLog('job', `Job running · ${payload.jobId.slice(0, 12)}…`);
     }
 
     if (eventType === 'job.completed') {
-      pushLog('success', `Job completed · ${payload.jobId?.slice(0, 12)}…`);
+      if (!payload?.jobId) return;
+      pushLog('success', `Job completed · ${payload.jobId.slice(0, 12)}…`);
+    }
+
+    if (eventType === 'job.failed') {
+      pushLog('error', `Job failed · ${payload?.reason ?? 'Unknown error'}`);
     }
 
     if (eventType === 'node.started') {
-      pushLog('node', `${payload.type} · running`);
+      if (!payload?.jobId) return;
+      pushLog('node', `${payload.type ?? 'NODE'} · running`);
     }
 
     if (eventType === 'node.completed') {
+      if (!payload?.jobId) return;
       pushLog('node', `${payload.type ?? 'NODE'} · ${payload.state}`);
 
       setCurrentJob((previous) => {
-        if (!previous) return previous;
+        if (!previous || previous.id !== payload.jobId) return previous;
 
         return {
           ...previous,
           nodes: previous.nodes.map((node) =>
             node.id === payload.nodeId
-              ? { ...node, state: payload.state, outputsHash: payload.outputsHash }
+              ? { ...node, state: payload.state, outputsHash: payload.outputsHash, updatedAt: new Date().toISOString() }
+              : node,
+          ),
+        };
+      });
+    }
+
+    if (eventType === 'node.failed') {
+      if (!payload?.jobId) return;
+      pushLog('error', `${payload.type ?? 'NODE'} · FAILED · ${payload.failureReason ?? 'Unknown error'}`);
+
+      setCurrentJob((previous) => {
+        if (!previous || previous.id !== payload.jobId) return previous;
+
+        return {
+          ...previous,
+          nodes: previous.nodes.map((node) =>
+            node.id === payload.nodeId
+              ? { ...node, state: 'FAILED', updatedAt: new Date().toISOString() }
               : node,
           ),
         };
@@ -674,11 +716,15 @@ export default function App() {
     }
 
     if (eventType === 'job.plan_created') {
-      setCurrentJob((previous) => (previous ? { ...previous, nodes: payload.plan } : previous));
+      if (!payload?.jobId) return;
+      setCurrentJob((previous) => {
+        if (!previous || previous.id !== payload.jobId) return previous;
+        return { ...previous, nodes: Array.isArray(payload.plan) ? payload.plan : previous.nodes };
+      });
     }
 
     if (eventType === 'security.alert') {
-      pushLog('error', `Security alert · ${payload.message}`);
+      pushLog('error', `Security alert · ${payload?.message ?? 'Security alert'}`);
     }
   });
 
@@ -706,17 +752,17 @@ export default function App() {
     if (!prompt.trim()) return;
 
     setSubmitting(true);
+
     setCitations([]);
     setArtifacts([]);
+    setLogs([]);
+    setCurrentJob(null);
 
     try {
-      const requestCapabilities: Capability[] = Array.isArray(currentJob?.request?.capabilities)
-        ? (currentJob.request.capabilities as Capability[])
-        : ['GENERAL_REASONING'];
-
+      // Submit task intent without hardcoding capabilities.
+      // Backend will use CapabilitySelector to choose appropriate capabilities.
       const job = await apiPost<Job>('/api/jobs', {
         intent: prompt,
-        capabilities: requestCapabilities,
         riskLevel,
       });
 
@@ -983,8 +1029,8 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <h3>Capabilities will be selected automatically from your task.</h3>
-                  <div className="plan-empty">Describe your task and the system will determine the required capabilities.</div>
+                  <h3>Current backend capability selection</h3>
+                  <div className="plan-empty">This build currently initializes new jobs with the default GENERAL_REASONING capability; capability selection is not yet automated beyond that static fallback.</div>
                 </>
               )}
             </section>

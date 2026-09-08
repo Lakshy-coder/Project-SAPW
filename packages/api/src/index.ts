@@ -63,8 +63,10 @@ const executionGraph = new ExecutionGraph(wsService);
 app.post('/api/jobs', async (req, res) => {
   try {
     const request = JobRequestSchema.parse(req.body);
-    const job = await executionGraph.startJob(request, 'user-dev', 'project-dev');
-    res.json(job);
+    // Create job and queue for execution - return immediately with jobId
+    // Execution runs in background and emits events over WebSocket
+    const job = await executionGraph.createAndQueueJob(request, 'user-dev', 'project-dev');
+    res.status(202).json(job);  // 202 Accepted - job accepted, processing asynchronously
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
