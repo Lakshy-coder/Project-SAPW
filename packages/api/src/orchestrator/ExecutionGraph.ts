@@ -3,13 +3,54 @@ import { JobManager } from './JobManager';
 import { Planner } from './Planner';
 import { CapabilitySelector } from './CapabilitySelector';
 import { WebSocketService } from '../services/WebSocketService';
-import { JobRequest, NodeStatus } from '@sih2k26/core';
-import { verifyHash, verificationGate, verifySchema } from '../verification/Verifier';
+import { JobRequest, NodeStatus, Capability } from '@sih2k26/core';
+import { verifyHash, verificationGate, verifySchema, VerificationResult } from '../verification/Verifier';
 import { toolGateway } from '../tools/ToolGateway';
 import { policyEngine } from '../security/PolicyEngine';
 import pino from 'pino';
 
 const logger = pino();
+
+/**
+ * Extracts engineering parameters from user request intent.
+ * Returns NEEDS_INPUT state if required parameters are missing.
+ */
+function extractEngineeringParameters(intent: string, rawRequest?: any): {
+  status: 'READY' | 'NEEDS_INPUT';
+  missingFields: string[];
+  extractedParams: Partial<{
+    designPressureMPa: number;
+    outsideDiameterMM: number;
+    allowableStressMPa: number;
+    measuredThicknessMM: number;
+    weldJointFactor: number;
+    yCoefficient: number;
+  }>;
+} {
+  const extractedParams: any = {};
+  const missingFields: string[] = [];
+  
+  // Try to extract from rawRequest first (structured input)
+  if (rawRequest && typeof rawRequest === 'object') {
+    if (typeof rawRequest.designPressureMPa === 'number') extractedParams.designPressureMPa = rawRequest.designPressureMPa;
+    if (typeof rawRequest.outsideDiameterMM === 'number') extractedParams.outsideDiameterMM = rawRequest.outsideDiameterMM;
+    if (typeof rawRequest.allowableStressMPa === 'number') extractedParams.allowableStressMPa = rawRequest.allowableStressMPa;
+    if (typeof rawRequest.measuredThicknessMM === 'number') extractedParams.measuredThicknessMM = rawRequest.measuredThicknessMM;
+    if (typeof rawRequest.weldJointFactor === 'number') extractedParams.weldJointFactor = rawRequest.weldJointFactor;
+    if (typeof rawRequest.yCoefficient === 'number') extractedParams.yCoefficient = rawRequest.yCoefficient;
+  }
+  
+  // Check what's missing for ASME calculation
+  if (extractedParams.designPressureMPa === undefined) missingFields.push('designPressureMPa');
+  if (extractedParams.outsideDiameterMM === undefined) missingFields.push('outsideDiameterMM');
+  if (extractedParams.allowableStressMPa === undefined) missingFields.push('allowableStressMPa');
+  
+  return {
+    status: missingFields.length > 0 ? 'NEEDS_INPUT' : 'READY',
+    missingFields,
+    extractedParams
+  };
+}
 
 export class ExecutionGraph {
   constructor(private wsService: WebSocketService) {}
@@ -38,7 +79,6 @@ export class ExecutionGraph {
 
     void this.executeJobInBackground(job.id, enrichedRequest, userId, projectId).catch((error) => {
       logger.error({ jobId: job.id, error: error.message }, 'Background job execution failed');
-    });
     });
 
     return job;
@@ -178,9 +218,73 @@ export class ExecutionGraph {
       let output: any = { nodeType: node.type, jobId, requestIntent: request.intent, startedAt: startedAt.toISOString() };
 
       if (node.type === 'ASME_CALCULATION') {
-        const toolInput = { designPressureMPa: 12, outsideDiameterMM: 219.1, allowableStressMPa: 137.9, measuredThicknessMM: 9.5 };
+        // Extract parameters from request - NO HARDCODING
+        const rawInput = (request as any).rawInput || {};
+        const designPressureMPa = typeof rawInput.designPressureMPa === 'number' ? rawInput.designPressureMPa : undefined;
+        const outsideDiameterMM = typeof rawInput.outsideDiameterMM === 'number' ? rawInput.outsideDiameterMM : undefined;
+        const allowableStressMPa = typeof rawInput.allowableStressMPa === 'number' ? rawInput.allowableStressMPa : undefined;
+        const weldJointFactor = typeof rawInput.weldJointFactor === 'number' ? rawInput.weldJointFactor : 1.0;
+        const yCoefficient = typeof rawInput.yCoefficient === 'number' ? rawInput.yCoefficient : 0.4;
+        const measuredThicknessMM = typeof rawInput.measuredThicknessMM === 'number' ? rawInput.measuredThicknessMM : undefined;
+
+        // Check for missing required parameters
+        const missingParams = [];
+        if (designPressureMPa === undefined) missingParams.push('designPressureMPa');
+        if (outsideDiameterMM === undefined) missingParams.push('outsideDiameterMM');
+        if (allowableStressMPa === undefined) missingParams.push('allowableStressMPa');
+
+        if (missingParams.length > 0) {
+          node.state = 'NEEDS_INPUT';
+          node.updatedAt = new Date();
+          node.failureReason = 'Missing required parameters: ' + missingParams.join(', ');
+          
+          const job = await JobManager.getJob(jobId);
+          if (job) {
+            await JobManager.updateJobNodes(jobId, job.nodes);
+          }
+          
+          this.wsService.broadcast('node.needs_input', { 
+            jobId, 
+            nodeId: node.id, 
+            type: node.type, 
+            state: node.state, 
+            missingFields: missingParams,
+            ts: new Date().toISOString() 
+          });
+          
+          return { ...node, state: 'NEEDS_INPUT', failureReason: node.failureReason };
+        }
+
+        // Validate ranges
+        if (designPressureMPa <= 0) throw new Error('designPressureMPa must be positive');
+        if (outsideDiameterMM <= 0) throw new Error('outsideDiameterMM must be positive');
+        if (allowableStressMPa <= 0) throw new Error('allowableStressMPa must be positive');
+        if (weldJointFactor < 0 || weldJointFactor > 1) throw new Error('weldJointFactor must be between 0 and 1');
+
+        const toolInput = { 
+          designPressureMPa, 
+          outsideDiameterMM, 
+          allowableStressMPa, 
+          weldJointFactor, 
+          yCoefficient,
+          measuredThicknessMM 
+        };
+        
         const res = await toolGateway.execute('asme-b31-3-pipe-thickness', toolInput, ['tools:engineering']);
         output = res.result;
+        
+        // Perform independent mathematical verification
+        const { verifyMath } = await import('../verification/Verifier');
+        const expectedTMin = (designPressureMPa * outsideDiameterMM) / (2 * (allowableStressMPa * weldJointFactor + designPressureMPa * yCoefficient));
+        const mathCheck = verifyMath({
+          computed: output.minimumRequiredThicknessMM,
+          expected: parseFloat(expectedTMin.toFixed(4)),
+          tolerancePct: 0.1 // 0.1% tolerance for floating point
+        });
+        
+        if (mathCheck.status !== 'PASS') {
+          throw new Error('VERIFICATION_FAILED: ' + mathCheck.failureReason);
+        }
       }
 
       if (node.type === 'POLICY_PRECHECK') {

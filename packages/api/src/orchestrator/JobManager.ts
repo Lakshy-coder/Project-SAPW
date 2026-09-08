@@ -76,7 +76,7 @@ async function getBackendMode(): Promise<'FILE' | 'PRISMA'> {
 export class JobManager {
   static async createJob(request: JobRequest, userId: string, projectId: string) {
     const persisted = await readPersistedJobs();
-    const preferredId = request.id && !persisted[request.id] ? request.id : randomUUID();
+    const preferredId = request.id || randomUUID();
     const job = {
       id: preferredId,
       projectId,
