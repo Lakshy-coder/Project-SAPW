@@ -1,23 +1,54 @@
-import { createHash, createSign, generateKeyPairSync } from 'crypto';
+import { createHash, createSign, generateKeyPairSync, createVerify, randomUUID } from 'crypto';
+import * as fs from 'fs';
+import path from 'path';
 import pino from 'pino';
-import { randomUUID } from 'crypto';
 
 const logger = pino();
+const runtimeDir = path.resolve(process.cwd(), '.runtime');
+const keyFile = path.join(runtimeDir, 'audit-signing-key.json');
 
-// In production: load from a protected key store / HSM.
-// For development: generate an in-memory keypair at startup.
-let _privateKey: string;
-let _publicKey: string;
-let _keyId: string;
+interface StoredSigningKey {
+  keyId: string;
+  privateKey: string;
+  publicKey: string;
+}
+
+let _privateKey: string | undefined;
+let _publicKey: string | undefined;
+let _keyId: string | undefined;
+
+function readStoredKey(): StoredSigningKey | undefined {
+  try {
+    fs.mkdirSync(runtimeDir, { recursive: true });
+    const raw = fs.readFileSync(keyFile, 'utf8');
+    return JSON.parse(raw) as StoredSigningKey;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeStoredKey(payload: StoredSigningKey) {
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.writeFileSync(keyFile, JSON.stringify(payload, null, 2), 'utf8');
+}
 
 function ensureKeys() {
-  if (!_privateKey) {
-    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-    _privateKey = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
-    _publicKey = publicKey.export({ type: 'spki', format: 'pem' }) as string;
-    _keyId = 'dev-ephemeral-key-' + Date.now();
-    logger.warn('Using ephemeral in-memory signing key. For production, load from a protected key store.');
+  if (_privateKey && _publicKey && _keyId) return;
+
+  const stored = readStoredKey();
+  if (stored) {
+    _privateKey = stored.privateKey;
+    _publicKey = stored.publicKey;
+    _keyId = stored.keyId;
+    return;
   }
+
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  _privateKey = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+  _publicKey = publicKey.export({ type: 'spki', format: 'pem' }) as string;
+  _keyId = `runtime-key-${Date.now()}`;
+  writeStoredKey({ keyId: _keyId, privateKey: _privateKey, publicKey: _publicKey });
+  logger.warn('Using persisted runtime signing key. For production, store this in a protected key vault or HSM.');
 }
 
 export interface AuditEvent {
@@ -63,7 +94,6 @@ export class AuditService {
     const inputHash = createHash('sha256').update(JSON.stringify(inputData)).digest('hex');
     const outputHash = createHash('sha256').update(JSON.stringify(outputData)).digest('hex');
 
-    // Chain: blockHash = sha256(parentHashes + inputHash + outputHash + seq)
     const blockPayload = JSON.stringify({ parentHashes, inputHash, outputHash, seq, jobId, eventType });
     const blockHash = createHash('sha256').update(blockPayload).digest('hex');
 
@@ -93,18 +123,16 @@ export class AuditService {
     if (!chain || chain.length === 0) throw new Error(`PROVENANCE_ERROR: No audit chain for job ${jobId}`);
 
     const rootHash = chain[chain.length - 1].blockHash;
-
-    // Sign root hash
     const sign = createSign('SHA256');
     sign.update(rootHash);
-    const signature = sign.sign(_privateKey, 'base64');
+    const signature = sign.sign(_privateKey!, 'base64');
 
     const receipt: ExecutionReceipt = {
       id: randomUUID(),
       jobId,
       rootHash,
       signature,
-      keyId: _keyId,
+      keyId: _keyId!,
       verifierVersion: '1.0.0',
       events: chain,
       createdAt: new Date().toISOString()
@@ -120,7 +148,14 @@ export class AuditService {
 
   verify(receipt: ExecutionReceipt): boolean {
     ensureKeys();
-    // Re-verify chain integrity
+    if (!_publicKey) return false;
+
+    const verify = createVerify('SHA256');
+    verify.update(receipt.rootHash);
+    verify.end();
+    const signatureValid = verify.verify(_publicKey, receipt.signature, 'base64');
+    if (!signatureValid) return false;
+
     let prevHash = '';
     for (const ev of receipt.events) {
       if (ev.seq > 0 && !ev.parentHashes.includes(prevHash)) return false;

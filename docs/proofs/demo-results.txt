@@ -1,0 +1,13 @@
+Deterministic runtime validation performed through the project test suite and runtime logs.
+
+Validated behaviors:
+- policy enforcement under sovereign mode
+- public outbound blocking
+- sandbox degraded-status handling when Docker is unavailable
+- persistence and audit sealing with a persisted runtime key
+- verification gate and tamper detection
+
+Limitation:
+- A fully interactive UI demo was not executed in this headless environment; no visual end-to-end workbench run was captured.
+
+Status: PASS for runtime proof, PARTIAL for interactive UI demo coverage.

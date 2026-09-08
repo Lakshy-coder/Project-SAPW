@@ -1,0 +1,22 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90mD:/SIH2K26[39m
+
+{"level":40,"time":1788804594950,"pid":2444,"hostname":"Lakshya_Rana","msg":"Using persisted runtime signing key. For production, store this in a protected key vault or HSM."}
+{"level":30,"time":1788804594954,"pid":2444,"hostname":"Lakshya_Rana","jobId":"job-1","seq":0,"eventType":"NODE_STARTED","blockHash":"896d59c626d6e444e308cb9e3ff387a9bd825cc5b2a7918aad8c463e0d9fddfe","msg":"Audit event emitted"}
+{"level":30,"time":1788804594954,"pid":2444,"hostname":"Lakshya_Rana","jobId":"job-1","seq":1,"eventType":"NODE_COMPLETED","blockHash":"fc95f7170316d46cbfb6be73931fb2f80258450c57958d7f7d7817f4a9ea2b6a","msg":"Audit event emitted"}
+{"level":30,"time":1788804594955,"pid":2444,"hostname":"Lakshya_Rana","jobId":"job-1","seq":0,"eventType":"START","blockHash":"a56d9757adb3f9653203193d7d153350c166b8ba21ab61b34105525bbd22808f","msg":"Audit event emitted"}
+{"level":30,"time":1788804594955,"pid":2444,"hostname":"Lakshya_Rana","jobId":"job-1","seq":1,"eventType":"END","blockHash":"eda3d6b7dea7ee8eeee8e06c070a7de21909cece3cff309aaafab2ccf420c89b","msg":"Audit event emitted"}
+{"level":30,"time":1788804594957,"pid":2444,"hostname":"Lakshya_Rana","jobId":"job-2","seq":0,"eventType":"START","blockHash":"eb957e070c714852653521626f05236436b7bde4b6ceabf5f002e9e141b07fa4","msg":"Audit event emitted"}
+{"level":30,"time":1788804594957,"pid":2444,"hostname":"Lakshya_Rana","jobId":"job-2","seq":1,"eventType":"END","blockHash":"4145a480370f5a68fce28fe1b866e52382dc8809e28278e5f7736aef0f29955f","msg":"Audit event emitted"}
+{"level":30,"time":1788804594959,"pid":2444,"hostname":"Lakshya_Rana","jobId":"job-2","rootHash":"4145a480370f5a68fce28fe1b866e52382dc8809e28278e5f7736aef0f29955f","keyId":"runtime-key-1788804594950","msg":"Execution receipt sealed"}
+{"level":30,"time":1788804594961,"pid":2444,"hostname":"Lakshya_Rana","jobId":"job-3","seq":0,"eventType":"START","blockHash":"08eb4bbbace090e0ca0c498ec6eececa0e55e86c518ffa68dfff4b143c0c8bb9","msg":"Audit event emitted"}
+{"level":30,"time":1788804594962,"pid":2444,"hostname":"Lakshya_Rana","jobId":"job-3","rootHash":"08eb4bbbace090e0ca0c498ec6eececa0e55e86c518ffa68dfff4b143c0c8bb9","keyId":"runtime-key-1788804594950","msg":"Execution receipt sealed"}
+{"level":30,"time":1788804594962,"pid":2444,"hostname":"Lakshya_Rana","jobId":"jobA","seq":0,"eventType":"E1","blockHash":"83edb67aebce101b8c3623fe25c1836bf33c7a5b43502756db1a3ca2c3ecdef6","msg":"Audit event emitted"}
+{"level":30,"time":1788804594962,"pid":2444,"hostname":"Lakshya_Rana","jobId":"jobB","seq":0,"eventType":"E1","blockHash":"6442dbb16c6df157f823dcd09f2044bcaf1f900546de2170214ccfab2b2355c1","msg":"Audit event emitted"}
+ [32m✓[39m packages/api/tests/audit.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 51[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m6 passed[39m[22m[90m (6)[39m
+[2m   Start at [22m 23:39:54
+[2m   Duration [22m 290ms[2m (tests 35%, import 33%, transform 28%, worker 4%)[22m
+

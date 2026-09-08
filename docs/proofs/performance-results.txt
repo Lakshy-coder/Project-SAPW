@@ -1,0 +1,17 @@
+Measured values from the current environment:
+
+- Build duration: 180 ms
+- Full test suite duration: 544 ms
+- Security suite duration: 321 ms
+- Audit suite duration: 290 ms
+- Verification suite duration: 278 ms
+- Network suite duration: 253 ms
+
+Not measured in this environment:
+- CPU / RAM / GPU usage under load
+- queue depth
+- token usage
+- end-to-end model latency
+- retrieval latency beyond the Vitest suite timing
+
+These metrics are intentionally limited to actual measured values and do not claim unmeasured performance characteristics.

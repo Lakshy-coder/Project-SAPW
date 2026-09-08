@@ -26,6 +26,7 @@ export interface PolicyViolation {
 export interface SovereigntyStatus {
   sovereignMode: boolean;
   enforcementActive: boolean;
+  enforcementReady: boolean;
   policyMode: 'SOVEREIGN' | 'DEVELOPMENT';
   networkInterfaces: Record<string, string[]>;
   allowedCidrs: string[];
@@ -58,6 +59,25 @@ export class NetworkMonitor {
   private connections: NetworkConnection[] = [];
   private violations: PolicyViolation[] = [];
   private violationCounter = 0;
+
+  isOutboundAllowed(remoteAddress: string): boolean {
+    const sovereignMode = process.env.SOVEREIGN_MODE === 'true';
+    if (!sovereignMode) return true;
+    const className = classifyAddress(remoteAddress);
+    return className === 'LOOPBACK' || className === 'PRIVATE_LAN' || className === 'INFERENCE_NODE';
+  }
+
+  enforceOutboundPolicy(remoteAddress: string, remotePort: number, protocol = 'tcp'): { allowed: boolean; reason?: string } {
+    const allowed = this.isOutboundAllowed(remoteAddress);
+    if (!allowed) {
+      this.recordConnection(remoteAddress, remotePort, protocol);
+      return {
+        allowed: false,
+        reason: 'PUBLIC_WAN connection blocked by sovereign policy'
+      };
+    }
+    return { allowed: true };
+  }
 
   recordConnection(remoteAddress: string, remotePort: number, protocol = 'tcp'): NetworkConnection {
     const sovereignMode = process.env.SOVEREIGN_MODE === 'true';
@@ -97,9 +117,11 @@ export class NetworkMonitor {
     for (const [name, addrs] of Object.entries(ifaces)) {
       if (addrs) ifaceMap[name] = addrs.map(a => a.address);
     }
+    const enforcementReady = sovereignMode;
     return {
       sovereignMode,
       enforcementActive: sovereignMode,
+      enforcementReady,
       policyMode: sovereignMode ? 'SOVEREIGN' : 'DEVELOPMENT',
       networkInterfaces: ifaceMap,
       allowedCidrs: ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '::1/128'],
@@ -107,8 +129,8 @@ export class NetworkMonitor {
       violationCount: this.violations.length,
       lastChecked: new Date().toISOString(),
       message: sovereignMode
-        ? 'SOVEREIGN MODE ACTIVE: Public WAN connections are blocked by policy.'
-        : 'DEVELOPMENT MODE: Network enforcement not active. Do not use in air-gapped deployment.'
+        ? 'SOVEREIGN MODE ACTIVE: non-private outbound connections are denied by policy.'
+        : 'DEVELOPMENT MODE: outbound policy is not enforced at OS level; runtime checks remain passive.'
     };
   }
 

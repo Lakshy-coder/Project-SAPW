@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { JobStatusSchema, NodeStatusSchema, CapabilitySchema, JobRequestSchema } from './schemas';
+import {
+  JobStatusSchema,
+  NodeStatusSchema,
+  CapabilitySchema,
+  JobRequestSchema
+} from './schemas';
 
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 export type NodeStatus = z.infer<typeof NodeStatusSchema>;
@@ -15,4 +20,17 @@ export interface ExecutionNode {
   outputsHash?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface JobRecord {
+  id: string;
+  projectId?: string;
+  userId?: string;
+  sessionId?: string;
+  workflowVersion: string;
+  status: JobStatus;
+  request: Partial<JobRequest>;
+  createdAt: Date;
+  updatedAt: Date;
+  nodes: ExecutionNode[];
 }

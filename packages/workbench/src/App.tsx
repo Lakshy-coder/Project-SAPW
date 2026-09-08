@@ -1,703 +1,1041 @@
-import { useState, useEffect, useCallback } from 'react';
-import './index.css';
-import {
-  ALL_CAPABILITIES, apiPost, apiGet, API_BASE
-} from './api';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import './App.css';
+import { apiPost, apiGet, API_BASE } from './api';
 import type {
-  Capability, RiskLevel, Citation, ArtifactRecord, WsEvent,
-  Job, ExecutionNode
+  Capability,
+  RiskLevel,
+  Citation,
+  ArtifactRecord,
+  WsEvent,
+  Job,
+  ExecutionNode,
 } from './api';
 import { useWebSocket, shortHash } from './utils';
 
 type RightTab = 'evidence' | 'artifacts' | 'security' | 'audit';
-type NavView  = 'workbench' | 'knowledge' | 'tools' | 'admin';
+type NavView = 'workbench' | 'knowledge' | 'tools';
 
-// ─── ExecutionGraph component ─────────────────────────────────────────────────
+const CAPABILITY_DETAILS: Record<Capability, { label: string; description: string }> = {
+  GENERAL_REASONING: {
+    label: 'Local reasoning',
+    description: 'Uses the local model to interpret the industrial request and context.',
+  },
+  CODE_GENERATION: {
+    label: 'Implementation',
+    description: 'Builds or adapts logic when a task requires code work.',
+  },
+  CODE_EXECUTION: {
+    label: 'Computation',
+    description: 'Runs computation in the controlled execution environment.',
+  },
+  VISION_EXTRACTION: {
+    label: 'Vision',
+    description: 'Extracts structured information from visual or document input.',
+  },
+  SOP_RETRIEVAL: {
+    label: 'SOP / RAG',
+    description: 'Retrieves relevant controlled engineering sources and standards.',
+  },
+  EMBEDDINGS: {
+    label: 'Context retrieval',
+    description: 'Matches related technical context from local knowledge memory.',
+  },
+  ASME_CALCULATION: {
+    label: 'Engineering calculation',
+    description: 'Runs the deterministic engineering calculation needed for the task.',
+  },
+  DOCUMENT_GENERATION: {
+    label: 'Deliverable',
+    description: 'Prepares the final output or artifact expected by the user.',
+  },
+  POLICY_CHECK: {
+    label: 'Policy check',
+    description: 'Checks the task against applicable safety and governance rules.',
+  },
+  SIGNED_AUDIT: {
+    label: 'Signed audit',
+    description: 'Records execution history and seals the result for traceability.',
+  },
+};
+
+const RISK_OPTIONS: RiskLevel[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+
+function humanizeNodeType(type: string): string {
+  const values: Record<string, string> = {
+    INTENT_EXTRACTION: 'Understanding request',
+    POLICY_PRECHECK: 'Checking safety rules',
+    REASONING: 'Local AI reasoning',
+    CODE_GENERATION: 'Preparing implementation',
+    CODE_EXECUTION: 'Running computation',
+    VISION_EXTRACTION: 'Extracting visual data',
+    SOP_RETRIEVAL: 'Finding relevant sources',
+    EMBEDDINGS: 'Preparing technical context',
+    ASME_CALCULATION: 'Running engineering calculation',
+    POLICY_CHECK: 'Checking governance',
+    DOCUMENT_GENERATION: 'Preparing deliverable',
+    SIGNED_AUDIT: 'Sealing execution record',
+    VERIFICATION_GATE: 'Verifying result',
+    EVIDENCE_SEALING: 'Sealing evidence',
+    FINAL_DELIVERY: 'Preparing deliverable',
+    CAPABILITY_WORK: 'Running task work',
+  };
+
+  return values[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function ExecutionGraph({ nodes }: { nodes: ExecutionNode[] }) {
-  if (nodes.length === 0) {
+  if (!nodes.length) {
     return (
-      <div className="empty-state">
-        <div className="icon">⬡</div>
-        Submit a task to see the execution graph
+      <div className="empty-state compact">
+        <div className="empty-mark">◎</div>
+        <strong>Execution stages</strong>
+        <span>Submit a task to see how the system executes it.</span>
       </div>
     );
   }
+
   return (
     <div className="graph-track">
-      {nodes.map(n => (
-        <div key={n.id} className={`graph-node node-${n.state}`}>
+      {nodes.map((node, index) => (
+        <div key={node.id} className={`graph-node node-${node.state.toLowerCase()}`}>
+          <div className="graph-step">{String(index + 1).padStart(2, '0')}</div>
+
           <div className="node-body">
-            <div className="node-type">{n.type.replace(/_/g, ' ')}</div>
-            <div className="node-id">ID: {n.id.slice(0, 12)}…</div>
-            {n.outputsHash && (
-              <div className="node-hash">hash: {shortHash(n.outputsHash)}</div>
-            )}
+            <div className="node-type">{humanizeNodeType(node.type)}</div>
+            <div className="node-meta">
+              <span>Job {node.jobId.slice(0, 8)}…</span>
+              {node.outputsHash ? <span>Hash {shortHash(node.outputsHash)}</span> : null}
+            </div>
           </div>
-          <span className={`node-badge badge-${n.state}`}>{n.state}</span>
+
+          <span className={`node-badge badge-${node.state.toLowerCase()}`}>{node.state}</span>
         </div>
       ))}
     </div>
   );
 }
 
-// ─── LogStream component ──────────────────────────────────────────────────────
 function LogStream({ events }: { events: { type: string; text: string; ts: string }[] }) {
+  if (!events.length) {
+    return (
+      <div className="log-stream">
+        <div className="log-placeholder">Awaiting execution events…</div>
+      </div>
+    );
+  }
+
   return (
     <div className="log-stream">
-      {events.length === 0
-        ? <span style={{ color: 'var(--text-muted)' }}>Awaiting events…</span>
-        : events.map((e, i) => (
-          <div key={i} className={`log-line ${e.type}`}>
-            <span style={{ color: 'var(--text-muted)', marginRight: 6 }}>{e.ts}</span>
-            {e.text}
-          </div>
-        ))
-      }
+      {events.map((event, index) => (
+        <div key={`${event.ts}-${index}`} className={`log-line ${event.type}`}>
+          <span className="log-time">{event.ts}</span>
+          <span>{event.text}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
-// ─── QuickAiChat component ────────────────────────────────────────────────────
 function QuickAiChat() {
-  const [msg, setMsg]         = useState('');
-  const [reply, setReply]     = useState<string | null>(null);
-  const [error, setError]     = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const [reply, setReply] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const ask = async () => {
-    if (!msg.trim() || loading) return;
-    setLoading(true); setReply(null); setError(null);
+    if (!message.trim() || loading) return;
+
+    setLoading(true);
+    setReply(null);
+    setError(null);
+
     try {
-      const data: any = await apiPost('/api/ai/chat', { message: msg });
-      setReply(data.response);
+      const result: any = await apiPost('/api/ai/chat', { message });
+      setReply(result.response);
     } catch (e: any) {
       setError(e.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="card" style={{ margin: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>⚡ Quick AI Chat (qwen3:4b)</div>
-      <div style={{ display: 'flex', gap: 8 }}>
+    <section className="secondary-panel quick-chat">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">LOCAL MODEL</span>
+          <h3>Quick reasoning</h3>
+        </div>
+        <span className="model-chip">Local model</span>
+      </div>
+
+      <p className="helper-copy">Ask the local model a quick question without starting the full execution pipeline.</p>
+
+      <div className="inline-form">
         <input
           type="text"
-          placeholder="Ask Qwen anything…"
-          value={msg}
-          onChange={e => setMsg(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && ask()}
-          style={{ flex: 1 }}
+          placeholder="Ask the local model…"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') ask();
+          }}
         />
-        <button className="btn btn-primary" onClick={ask} disabled={loading || !msg.trim()}
-          style={{ whiteSpace: 'nowrap', padding: '7px 14px', fontSize: 12 }}>
-          {loading ? <><span className="spinner" />…</> : 'Ask'}
+
+        <button className="btn btn-dark" onClick={ask} disabled={loading || !message.trim()}>
+          {loading ? 'Asking…' : 'Ask'}
         </button>
       </div>
-      {error && <div style={{ fontSize: 12, color: 'var(--accent-red)', wordBreak: 'break-word' }}>⚠ {error}</div>}
-      {reply && (
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-base)', borderRadius: 6,
-          padding: '10px 12px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 300, overflowY: 'auto' }}>
-          {reply}
-        </div>
-      )}
+
+      {error ? <div className="inline-error">{error}</div> : null}
+      {reply ? <div className="chat-reply">{reply}</div> : null}
+    </section>
+  );
+}
+
+function EvidencePanel({ citations }: { citations: Citation[] }) {
+  if (!citations.length) {
+    return (
+      <div className="empty-state">
+        <div className="empty-mark">⌁</div>
+        <strong>No evidence yet</strong>
+        <span>Verified citations will appear here after retrieval.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel-list">
+      {citations.map((citation, index) => (
+        <article key={`${citation.documentId}-${index}`} className="evidence-item">
+          <div className="item-topline">
+            <span className="source-type">SOURCE {String(index + 1).padStart(2, '0')}</span>
+            <span className="verified-dot">●</span>
+          </div>
+
+          <div className="citation-title">{citation.documentTitle}</div>
+
+          <div className="citation-meta">
+            {citation.documentVersion ? `v${citation.documentVersion}` : 'Version unavailable'}
+            {' · '}
+            {citation.location || 'Location unavailable'}
+            {' · '}
+            {citation.retriever || 'local retriever'}
+            {typeof citation.score === 'number' ? ` · ${citation.score.toFixed(3)}` : ''}
+          </div>
+
+          <div className="citation-excerpt">“{citation.excerpt}”</div>
+        </article>
+      ))}
     </div>
   );
 }
 
-// ─── EvidencePanel ────────────────────────────────────────────────────────────
-function EvidencePanel({ citations }: { citations: Citation[] }) {
-  if (citations.length === 0) return <div className="empty-state"><div className="icon">📚</div>No citations yet</div>;
-  return (
-    <>
-      {citations.map((c, i) => (
-        <div key={i} className="citation-card">
-          <div className="citation-title">{c.documentTitle}</div>
-          <div className="citation-meta">v{c.documentVersion} · {c.location} · score {c.score.toFixed(3)} · {c.retriever}</div>
-          <div className="citation-excerpt">"{c.excerpt}"</div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-// ─── ArtifactsPanel ──────────────────────────────────────────────────────────
 function ArtifactsPanel({ artifacts, jobId }: { artifacts: ArtifactRecord[]; jobId: string | null }) {
-  if (!jobId) return <div className="empty-state"><div className="icon">📄</div>No job selected</div>;
-  if (artifacts.length === 0) return <div className="empty-state"><div className="icon">📄</div>No artifacts yet</div>;
+  if (!jobId) {
+    return (
+      <div className="empty-state">
+        <div className="empty-mark">□</div>
+        <strong>No job selected</strong>
+        <span>Artifacts will appear when the pipeline produces a deliverable.</span>
+      </div>
+    );
+  }
+
+  if (!artifacts.length) {
+    return (
+      <div className="empty-state">
+        <div className="empty-mark">□</div>
+        <strong>Artifacts</strong>
+        <span>No artifacts yet. A final result or file will appear here when available.</span>
+      </div>
+    );
+  }
+
   return (
-    <>
-      {artifacts.map(a => (
-        <div key={a.id} className="artifact-row">
-          <span className="artifact-icon">{a.type === 'XLSX' ? '📊' : a.type === 'PDF' ? '📕' : '📄'}</span>
+    <div className="panel-list">
+      {artifacts.map((artifact) => (
+        <article key={artifact.id} className="artifact-item">
+          <div className="file-icon">{artifact.type === 'XLSX' ? 'X' : artifact.type === 'PDF' ? 'P' : 'D'}</div>
+
           <div className="artifact-body">
-            <div className="artifact-name">{a.filename}</div>
-            <div className="artifact-hash">{a.sha256}</div>
+            <div className="artifact-name">{artifact.filename}</div>
+            <div className="artifact-meta">{artifact.type} · {artifact.sizeBytes ? `${artifact.sizeBytes} bytes` : 'Size unavailable'}</div>
           </div>
-          <div className="artifact-actions">
-            <a href={`${API_BASE}/api/artifacts/${a.id}/download`} download>
-              <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11 }}>↓</button>
-            </a>
-          </div>
-        </div>
+
+          <a className="icon-button" href={`${API_BASE}/api/artifacts/${artifact.id}/download`} download>
+            ↓
+          </a>
+        </article>
       ))}
-    </>
+    </div>
   );
 }
 
-// ─── SecurityPanel ─────────────────────────────────────────────────────────────
 function SecurityPanel({ health }: { health: any }) {
-  if (!health) return <div className="empty-state"><div className="icon">🛡</div>Loading…</div>;
+  if (!health) {
+    return (
+      <div className="empty-state">
+        <span className="spinner dark" />
+        <strong>Reading system state…</strong>
+      </div>
+    );
+  }
+
   const { sovereignMode, components, networkPolicy } = health;
+
+  const rows = [
+    ['Runtime', sovereignMode ? 'Sovereign mode' : 'Development mode', sovereignMode ? 'ok' : 'warn'],
+    ['Model location', health?.components?.models?.[0]?.location ?? 'Local', 'ok'],
+    ['Cloud inference', networkPolicy?.cloudInferenceAllowed ? 'Allowed' : 'Blocked', networkPolicy?.cloudInferenceAllowed ? 'warn' : 'ok'],
+    ['Network policy', networkPolicy?.mode ?? 'Unavailable', sovereignMode ? 'ok' : 'warn'],
+    ['Sandbox', components?.sandbox?.status ?? 'Unavailable', components?.sandbox?.status === 'UP' ? 'ok' : 'warn'],
+    ['Database', components?.qdrant?.status ?? 'Unavailable', components?.qdrant?.status === 'UP' ? 'ok' : 'warn'],
+    ['Audit', components?.audit?.status ?? 'Waiting', 'ok'],
+  ];
+
   return (
-    <>
-      <div className="card">
-        <div className="sec-row"><span className="sec-label">Mode</span>
-          <span className={`sec-val ${sovereignMode ? 'ok' : 'warn'}`}>{sovereignMode ? 'SOVEREIGN' : 'DEVELOPMENT'}</span>
-        </div>
-        <div className="sec-row"><span className="sec-label">Sandbox</span>
-          <span className={`sec-val ${components?.sandbox?.status === 'UP' ? 'ok' : 'warn'}`}>{components?.sandbox?.status ?? '—'}</span>
-        </div>
-        <div className="sec-row"><span className="sec-label">Qdrant</span>
-          <span className={`sec-val ${components?.qdrant?.status === 'UP' ? 'ok' : 'warn'}`}>{components?.qdrant?.status ?? '—'}</span>
-        </div>
-        <div className="sec-row"><span className="sec-label">Models</span>
-          <span className={`sec-val ${components?.modelState === 'READY' ? 'ok' : 'warn'}`}>{components?.modelState ?? '—'}</span>
-        </div>
-        <div className="sec-row"><span className="sec-label">Cloud Inference</span>
-          <span className="sec-val ok">BLOCKED</span>
-        </div>
-        <div className="sec-row"><span className="sec-label">Public WAN</span>
-          <span className={`sec-val ${networkPolicy?.publicEndpointsAllowed ? 'warn' : 'ok'}`}>
-            {networkPolicy?.publicEndpointsAllowed ? 'ALLOWED (dev)' : 'BLOCKED'}
-          </span>
-        </div>
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6, padding: '4px 2px' }}>
-        Network enforcement is applied at the OS/container level. This panel is observability only.
-      </div>
-      {components?.models?.map((m: any) => (
-        <div key={m.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-          <div>
-            <div style={{ fontWeight: 600 }}>{m.name}</div>
-            <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>{m.capabilities.join(', ')}</div>
+    <div className="panel-list">
+      <div className="security-card">
+        <div className="eyebrow">SECURITY STATE</div>
+
+        {rows.map(([label, value, tone]) => (
+          <div className="security-row" key={String(label)}>
+            <span>{String(label)}</span>
+            <strong className={`tone-${String(tone)}`}>{String(value)}</strong>
           </div>
-          <span className={`tag`} style={{ alignSelf: 'center', background: m.available ? 'rgba(61,214,140,0.15)' : 'rgba(224,74,74,0.15)', color: m.available ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-            {m.available ? 'ONLINE' : 'UNAVAILABLE'}
+        ))}
+      </div>
+
+      <div className="security-note">
+        <span className="note-mark">i</span>
+        <span>Security status is derived from runtime checks. Monitoring is not presented as proof of network enforcement.</span>
+      </div>
+
+      {(components?.models ?? []).map((model: any) => (
+        <div className="model-row" key={model.id ?? model.name ?? 'model'}>
+          <div>
+            <strong>{model.name ?? 'Model'}</strong>
+            <span>{model.capabilities?.join(', ') ?? 'Capabilities unavailable'}</span>
+          </div>
+
+          <span className={`status-label ${model.available ? 'ok' : 'bad'}`}>
+            {model.available ? 'READY' : 'UNAVAILABLE'}
           </span>
         </div>
       ))}
-    </>
+    </div>
   );
 }
 
-// ─── AuditPanel ─────────────────────────────────────────────────────────────
 function AuditPanel({ jobId }: { jobId: string | null }) {
-  const [chain, setChain]     = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
   const [receipt, setReceipt] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchChain = useCallback(async () => {
+  const fetchAudit = useCallback(async () => {
     if (!jobId) return;
     setLoading(true);
+
     try {
-      const d: any = await apiGet(`/api/jobs/${jobId}/audit`);
-      setChain(d.events ?? []);
-    } catch {}
-    setLoading(false);
+      const data: any = await apiGet(`/api/jobs/${jobId}/audit`);
+      setEvents(data.events ?? []);
+    } catch {
+      // Intentionally silent.
+    } finally {
+      setLoading(false);
+    }
   }, [jobId]);
 
   const fetchReceipt = useCallback(async () => {
     if (!jobId) return;
+
     try {
-      const r: any = await apiGet(`/api/jobs/${jobId}/receipt`);
-      setReceipt(r);
-    } catch {}
+      const data: any = await apiGet(`/api/jobs/${jobId}/receipt`);
+      setReceipt(data);
+    } catch {
+      // Intentionally silent.
+    }
   }, [jobId]);
 
-  useEffect(() => { fetchChain(); }, [fetchChain]);
+  useEffect(() => {
+    fetchAudit();
+  }, [fetchAudit]);
 
-  if (!jobId) return <div className="empty-state"><div className="icon">🔏</div>No job selected</div>;
+  if (!jobId) {
+    return (
+      <div className="empty-state">
+        <div className="empty-mark">⌁</div>
+        <strong>No job selected</strong>
+        <span>Audit and provenance data will appear after a task starts.</span>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn-secondary" onClick={fetchChain} style={{ fontSize: 12, padding: '5px 10px' }}>↻ Refresh</button>
-        <button className="btn btn-secondary" onClick={fetchReceipt} style={{ fontSize: 12, padding: '5px 10px' }}>Seal Receipt</button>
+    <div className="panel-list">
+      <div className="audit-intro">
+        <div className="eyebrow">AUDIT & PROVENANCE</div>
+        <p>Execution history is recorded so the result can be independently checked later.</p>
       </div>
-      {loading && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Loading…</div>}
-      {receipt && (
-        <div className="card">
-          <div style={{ fontSize: 11, marginBottom: 6, fontWeight: 600, color: 'var(--accent-teal)' }}>SIGNED EXECUTION RECEIPT</div>
-          <div style={{ fontSize: 10, fontFamily: 'Courier New', wordBreak: 'break-all', color: 'var(--text-secondary)' }}>
-            rootHash: {receipt.rootHash}<br />
-            keyId: {receipt.keyId}<br />
-            sig: {receipt.signature?.slice(0, 40)}…
-          </div>
+
+      <div className="audit-actions">
+        <button className="btn btn-light" onClick={fetchAudit}>Refresh</button>
+        <button className="btn btn-dark" onClick={fetchReceipt}>Verify receipt</button>
+      </div>
+
+      {loading ? <div className="loading-line"><span className="spinner dark" />Reading audit chain…</div> : null}
+
+      {receipt ? (
+        <div className="receipt-card">
+          <div className="eyebrow">SIGNED EXECUTION RECEIPT</div>
+          <div className="receipt-status">{receipt.valid === false ? 'INVALID / TAMPERED' : 'VERIFIED'}</div>
+
+          <dl>
+            <div>
+              <dt>Execution ID</dt>
+              <dd>{receipt.jobId ?? jobId}</dd>
+            </div>
+            <div>
+              <dt>Root hash</dt>
+              <dd>{receipt.rootHash ?? 'Unavailable'}</dd>
+            </div>
+            <div>
+              <dt>Signature</dt>
+              <dd>{receipt.signature ?? 'Unavailable'}</dd>
+            </div>
+            <div>
+              <dt>Key ID</dt>
+              <dd>{receipt.keyId ?? 'Unavailable'}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{receipt.valid === false ? 'INVALID' : (receipt.status ?? 'VERIFIED')}</dd>
+            </div>
+          </dl>
+        </div>
+      ) : (
+        <div className="empty-state compact">
+          <div className="empty-mark">⌁</div>
+          <strong>Awaiting execution receipt</strong>
+          <span>Audit data will appear after the backend records the job.</span>
         </div>
       )}
-      {chain.length === 0
-        ? <div className="empty-state">No audit events yet</div>
-        : chain.map((ev, i) => (
-          <div key={ev.id} className="card" style={{ fontSize: 11 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, color: 'var(--accent-blue)' }}>#{ev.seq} {ev.eventType}</span>
-              <span style={{ color: 'var(--text-muted)' }}>{ev.createdAt?.slice(11, 19)}</span>
+
+      {!events.length ? (
+        <div className="empty-state compact">No audit events yet.</div>
+      ) : (
+        events.map((event) => (
+          <article className="audit-item" key={event.id ?? `${event.seq ?? 0}-${event.eventType}`}>
+            <div className="audit-item-head">
+              <strong>#{event.seq ?? 0} {event.eventType}</strong>
+              <span>{event.createdAt?.slice(11, 19)}</span>
             </div>
-            <div className="hash-text">in:  {ev.inputHash?.slice(0, 20)}…</div>
-            <div className="hash-text">out: {ev.outputHash?.slice(0, 20)}…</div>
-            <div className="hash-text">blk: {ev.blockHash?.slice(0, 20)}…</div>
-          </div>
+
+            <div className="hash-text">IN {event.inputHash ? event.inputHash.slice(0, 24) + '…' : '—'}</div>
+            <div className="hash-text">OUT {event.outputHash ? event.outputHash.slice(0, 24) + '…' : '—'}</div>
+            <div className="hash-text">BLK {event.blockHash ? event.blockHash.slice(0, 24) + '…' : '—'}</div>
+          </article>
         ))
-      }
-    </>
+      )}
+    </div>
   );
 }
 
-// ─── Knowledge Search view ─────────────────────────────────────────────────
 function KnowledgeView() {
-  const [query, setQuery]     = useState('');
+  const [query, setQuery] = useState('');
   const [results, setResults] = useState<Citation[]>([]);
   const [loading, setLoading] = useState(false);
-  const [ingestTitle, setIngestTitle] = useState('');
-  const [ingestContent, setIngestContent] = useState('');
-  const [ingestVer, setIngestVer] = useState('1.0');
+
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [version, setVersion] = useState('1.0');
 
   const search = async () => {
-    if (!query) return;
+    if (!query.trim()) return;
+
     setLoading(true);
+
     try {
-      const d: any = await apiGet(`/api/knowledge/search?query=${encodeURIComponent(query)}`);
-      setResults(d.citations ?? []);
-    } catch {}
-    setLoading(false);
+      const data: any = await apiGet(`/api/knowledge/search?query=${encodeURIComponent(query)}`);
+      setResults(data.citations ?? []);
+    } catch {
+      // Silent.
+    } finally {
+      setLoading(false);
+    }
   };
 
   const ingest = async () => {
     try {
-      await apiPost('/api/knowledge/ingest', { title: ingestTitle, content: ingestContent, version: ingestVer });
-      setIngestTitle(''); setIngestContent(''); alert('Document ingested.');
-    } catch (e: any) { alert(e.message); }
+      await apiPost('/api/knowledge/ingest', {
+        title,
+        content,
+        version,
+      });
+
+      setTitle('');
+      setContent('');
+      alert('Document ingested.');
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
   return (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div className="card">
-        <div className="section-title" style={{ marginBottom: 10 }}>Search Knowledge Base</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input type="search" placeholder="Search SOPs, policies, documents…" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} />
-          <button className="btn btn-primary" onClick={search} disabled={loading} style={{ whiteSpace: 'nowrap' }}>{loading ? '…' : 'Search'}</button>
-        </div>
-        {results.length > 0 && <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {results.map((c, i) => <div key={i} className="citation-card">
-            <div className="citation-title">{c.documentTitle}</div>
-            <div className="citation-meta">v{c.documentVersion} · {c.location} · score {c.score.toFixed(3)}</div>
-            <div className="citation-excerpt">"{c.excerpt}"</div>
-          </div>)}
-        </div>}
+    <div className="page-stack">
+      <div className="page-heading">
+        <span className="eyebrow">KNOWLEDGE & RAG</span>
+        <h1>Controlled engineering sources.</h1>
+        <p>Search controlled engineering sources and add versioned documents for retrieval.</p>
       </div>
-      <div className="card">
-        <div className="section-title" style={{ marginBottom: 10 }}>Ingest Document</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <input type="text" placeholder="Title" value={ingestTitle} onChange={e => setIngestTitle(e.target.value)} />
-          <input type="text" placeholder="Version (e.g. 1.0)" value={ingestVer} onChange={e => setIngestVer(e.target.value)} style={{ width: 120 }} />
-          <textarea className="prompt-input" placeholder="Document content…" value={ingestContent} onChange={e => setIngestContent(e.target.value)} style={{ minHeight: 120 }} />
-          <button className="btn btn-primary" onClick={ingest} style={{ alignSelf: 'flex-start' }}>Ingest</button>
+
+      <section className="secondary-panel">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">RETRIEVAL</span>
+            <h3>Search SOPs and standards</h3>
+          </div>
         </div>
-      </div>
+
+        <div className="inline-form">
+          <input
+            type="search"
+            placeholder="Search SOPs, standards, policies…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') search();
+            }}
+          />
+
+          <button className="btn btn-dark" onClick={search} disabled={loading}>
+            {loading ? 'Searching…' : 'Search'}
+          </button>
+        </div>
+
+        {results.length > 0 ? (
+          <div className="results-list">
+            {results.map((result, index) => (
+              <div className="evidence-item" key={`${result.documentId}-${index}`}>
+                <div className="citation-title">{result.documentTitle}</div>
+                <div className="citation-meta">
+                  v{result.documentVersion}
+                  {' · '}
+                  {result.location}
+                  {' · '}
+                  {result.score.toFixed(3)}
+                </div>
+                <div className="citation-excerpt">“{result.excerpt}”</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="secondary-panel">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">INGEST</span>
+            <h3>Add a controlled source</h3>
+          </div>
+        </div>
+
+        <div className="form-stack">
+          <input type="text" placeholder="Document title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input type="text" placeholder="Version" value={version} onChange={(e) => setVersion(e.target.value)} />
+          <textarea className="standard-textarea" placeholder="Document content…" value={content} onChange={(e) => setContent(e.target.value)} />
+          <button className="btn btn-dark align-start" onClick={ingest}>Ingest source</button>
+        </div>
+      </section>
     </div>
   );
 }
 
-// ─── Tools view ───────────────────────────────────────────────────────────────
 function ToolsView() {
-  const [tools, setTools]       = useState<any[]>([]);
+  const [tools, setTools] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
-  const [input, setInput]       = useState('{}');
-  const [result, setResult]     = useState<any | null>(null);
+  const [input, setInput] = useState('{}');
+  const [result, setResult] = useState<any | null>(null);
 
   useEffect(() => {
-    apiGet<{ tools: any[] }>('/api/tools').then(d => setTools(d.tools)).catch(() => {});
+    apiGet<{ tools: any[] }>('/api/tools')
+      .then((data) => setTools(data.tools))
+      .catch(() => {});
   }, []);
 
   const execute = async () => {
     if (!selected) return;
+
     try {
       const parsed = JSON.parse(input);
-      const d = await apiPost<any>(`/api/tools/${selected.id}/execute`, { input: parsed });
-      setResult(d);
-    } catch (e: any) { setResult({ error: e.message }); }
-  };
-
-  return (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="section-title">Tool / MCP Gateway</div>
-      {tools.map(t => (
-        <div key={t.id} className="card" style={{ cursor: 'pointer', border: selected?.id === t.id ? '1px solid var(--accent-blue)' : undefined }}
-          onClick={() => { setSelected(t); setResult(null); }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 600 }}>{t.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{t.description}</div>
-            </div>
-            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: t.riskLevel === 'HIGH' ? 'rgba(224,74,74,0.15)' : 'rgba(61,214,140,0.15)', color: t.riskLevel === 'HIGH' ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-              {t.riskLevel}
-            </span>
-          </div>
-        </div>
-      ))}
-      {selected && (
-        <div className="card">
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>Execute: {selected.name}</div>
-          <label className="form-label">JSON Input</label>
-          <textarea className="prompt-input" value={input} onChange={e => setInput(e.target.value)} style={{ minHeight: 100, fontFamily: 'Courier New', fontSize: 12 }} />
-          <button className="btn btn-primary" onClick={execute} style={{ marginTop: 8 }}>Execute Tool</button>
-          {result && (
-            <pre style={{ marginTop: 12, fontSize: 11, fontFamily: 'Courier New', color: 'var(--text-secondary)', background: 'var(--bg-base)', padding: 10, borderRadius: 6, overflow: 'auto' }}>
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          )}
-        </div>
-      )}
-
-      {/* ─── AI Engineering Analysis ─────────────────────────────────────── */}
-      <EngineeringAnalysis />
-    </div>
-  );
-}
-
-// ─── Engineering Analysis component (used inside ToolsView) ──────────────────
-// Calls POST /api/ai/analyze: runs ASME B31.3 tool → Qwen interprets result.
-const DEFAULT_PIPE_INPUT = {
-  designPressureMPa: 12,
-  outsideDiameterMM: 219.1,
-  allowableStressMPa: 138,
-  weldJointFactor: 1.0,
-  yCoefficient: 0.4,
-  measuredThicknessMM: 7.0
-};
-
-function EngineeringAnalysis() {
-  const [toolInputStr, setToolInputStr] = useState(JSON.stringify(DEFAULT_PIPE_INPUT, null, 2));
-  const [question, setQuestion]         = useState('Is this pipe wall thickness adequate? What are the risks if not?');
-  const [loading, setLoading]           = useState(false);
-  const [analysisResult, setResult]     = useState<any | null>(null);
-  const [error, setError]               = useState<string | null>(null);
-
-  const runAnalysis = async () => {
-    setLoading(true); setResult(null); setError(null);
-    let toolInput: any;
-    try {
-      toolInput = JSON.parse(toolInputStr);
-    } catch {
-      setError('Invalid JSON in tool input'); setLoading(false); return;
-    }
-    try {
-      const data = await apiPost<any>('/api/ai/analyze', {
-        toolId: 'asme-b31-3-pipe-thickness',
-        toolInput,
-        question: question.trim() || undefined
-      });
+      const data = await apiPost<any>(`/api/tools/${selected.id}/execute`, { input: parsed });
       setResult(data);
     } catch (e: any) {
-      setError(e.message);
+      setResult({ error: e.message });
     }
-    setLoading(false);
   };
 
-  const statusColor = analysisResult?.toolResult?.status === 'PASS'
-    ? 'var(--accent-green)' : analysisResult?.toolResult?.status === 'FAIL'
-    ? 'var(--accent-red)' : 'var(--text-muted)';
-
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 14 }}>🤖</span>
-        <div style={{ fontWeight: 600 }}>AI Engineering Analysis — ASME B31.3 Pipe Thickness</div>
-        <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: 'rgba(224,74,74,0.15)', color: 'var(--accent-red)', marginLeft: 'auto' }}>HIGH RISK</span>
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-        Runs the deterministic ASME B31.3 §304.1.2 calculator, then asks Qwen3-4B to interpret the result and explain compliance status.
+    <div className="page-stack">
+      <div className="page-heading">
+        <span className="eyebrow">OPERATIONS</span>
+        <h1>Tool gateway.</h1>
+        <p>Inspect available deterministic tools and execute them through the controlled gateway.</p>
       </div>
 
-      <label className="form-label">Tool Input (JSON)</label>
-      <textarea
-        className="prompt-input"
-        value={toolInputStr}
-        onChange={e => setToolInputStr(e.target.value)}
-        style={{ minHeight: 140, fontFamily: 'Courier New', fontSize: 11 }}
-      />
-
-      <label className="form-label">Engineer's Question (optional)</label>
-      <input
-        type="text"
-        value={question}
-        onChange={e => setQuestion(e.target.value)}
-        placeholder="Ask Qwen about this result…"
-      />
-
-      <button
-        className="btn btn-primary"
-        onClick={runAnalysis}
-        disabled={loading}
-        style={{ alignSelf: 'flex-start' }}
-      >
-        {loading ? <><span className="spinner" />Analyzing…</> : '⚡ Run AI Analysis'}
-      </button>
-
-      {error && (
-        <div style={{ fontSize: 12, color: 'var(--accent-red)', wordBreak: 'break-word' }}>⚠ {error}</div>
-      )}
-
-      {analysisResult && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Tool result summary */}
-          <div style={{ background: 'var(--bg-base)', borderRadius: 6, padding: '10px 12px' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>
-              📐 Deterministic Calculation — Authoritative
-              <span style={{ marginLeft: 10, color: statusColor, fontWeight: 700 }}>
-                [{analysisResult.toolResult?.status}]
-              </span>
+      <div className="tool-list">
+        {tools.map((tool) => (
+          <button
+            key={tool.id}
+            className={`tool-card ${selected?.id === tool.id ? 'selected' : ''}`}
+            onClick={() => {
+              setSelected(tool);
+              setResult(null);
+            }}
+          >
+            <div>
+              <strong>{tool.name}</strong>
+              <span>{tool.description}</span>
             </div>
-            <div style={{ fontSize: 11, fontFamily: 'Courier New', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              Min. required: <strong style={{ color: 'var(--text-primary)' }}>{analysisResult.toolResult?.minimumRequiredThicknessMM} mm</strong>
-              {analysisResult.toolResult?.measuredThicknessMM !== undefined && (
-                <> &nbsp;·&nbsp; Measured: <strong style={{ color: statusColor }}>{analysisResult.toolResult.measuredThicknessMM} mm</strong></>
-              )}
-              <br />
-              Formula: <span style={{ color: 'var(--text-secondary)' }}>{analysisResult.toolResult?.formula}</span>
-              <br />
-              Code: {analysisResult.toolResult?.assumptions?.codeEdition} §{analysisResult.toolResult?.assumptions?.formulaId}
-              &nbsp;·&nbsp; Tool: {analysisResult.toolRecord?.status} in {analysisResult.toolRecord?.durationMs}ms
+
+            <span className={`risk-tag ${tool.riskLevel === 'HIGH' ? 'high' : 'normal'}`}>
+              {tool.riskLevel}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {selected ? (
+        <section className="secondary-panel">
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">TOOL EXECUTION</span>
+              <h3>{selected.name}</h3>
             </div>
           </div>
 
-          {/* Qwen interpretation */}
-          <div style={{ background: 'var(--bg-base)', borderRadius: 6, padding: '10px 12px' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>
-              🤖 AI Interpretation — Explanatory <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({analysisResult.model})</span>
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.65 }}>
-              {analysisResult.interpretation}
-            </div>
-          </div>
-        </div>
-      )}
+          <textarea className="standard-textarea mono-area" value={input} onChange={(e) => setInput(e.target.value)} />
+          <button className="btn btn-dark align-start" onClick={execute}>Execute tool</button>
+
+          {result ? <pre className="result-box">{JSON.stringify(result, null, 2)}</pre> : null}
+        </section>
+      ) : null}
     </div>
   );
 }
 
-// ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [navView, setNavView]       = useState<NavView>('workbench');
-  const [rightTab, setRightTab]     = useState<RightTab>('evidence');
-  const [prompt, setPrompt]         = useState('');
-  const [selectedCaps, setSelectedCaps] = useState<Set<Capability>>(new Set(['GENERAL_REASONING']));
-  const [riskLevel, setRiskLevel]   = useState<RiskLevel>('LOW');
+  const [navView, setNavView] = useState<NavView>('workbench');
+  const [rightTab, setRightTab] = useState<RightTab>('evidence');
+  const [prompt, setPrompt] = useState('');
+  const [riskLevel, setRiskLevel] = useState<RiskLevel>('LOW');
   const [currentJob, setCurrentJob] = useState<Job | null>(null);
-  const [citations, setCitations]   = useState<Citation[]>([]);
-  const [artifacts, setArtifacts]   = useState<ArtifactRecord[]>([]);
-  const [health, setHealth]         = useState<any>(null);
-  const [logs, setLogs]             = useState<{ type: string; text: string; ts: string }[]>([]);
+  const [citations, setCitations] = useState<Citation[]>([]);
+  const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([]);
+  const [health, setHealth] = useState<any>(null);
+  const [logs, setLogs] = useState<{ type: string; text: string; ts: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   const pushLog = useCallback((type: string, text: string) => {
-    setLogs(prev => [...prev.slice(-99), { type, text, ts: new Date().toLocaleTimeString() }]);
+    setLogs((previous) => [...previous.slice(-99), { type, text, ts: new Date().toLocaleTimeString() }]);
   }, []);
 
-  // WebSocket
-  const wsConnected = useWebSocket((ev: WsEvent) => {
-    const { event, payload } = ev;
-    if (event === 'job.started')    pushLog('job',  `▶ Job started: ${payload.jobId?.slice(0,12)}…`);
-    if (event === 'job.completed')  { pushLog('job', `✓ Job completed: ${payload.jobId?.slice(0,12)}…`); }
-    if (event === 'node.started')   pushLog('node', `  ↳ Node ${payload.type} RUNNING`);
-    if (event === 'node.completed') {
-      pushLog('node', `  ✓ Node ${payload.type ?? ''} ${payload.state}`);
-      setCurrentJob(prev => {
-        if (!prev) return prev;
-        const nodes = prev.nodes.map(n => n.id === payload.nodeId ? { ...n, state: payload.state, outputsHash: payload.outputsHash } : n);
-        return { ...prev, nodes };
+  const wsConnected = useWebSocket((event: WsEvent) => {
+    const { event: eventType, payload } = event;
+
+    if (eventType === 'job.started') {
+      pushLog('job', `Job started · ${payload.jobId?.slice(0, 12)}…`);
+    }
+
+    if (eventType === 'job.completed') {
+      pushLog('success', `Job completed · ${payload.jobId?.slice(0, 12)}…`);
+    }
+
+    if (eventType === 'node.started') {
+      pushLog('node', `${payload.type} · running`);
+    }
+
+    if (eventType === 'node.completed') {
+      pushLog('node', `${payload.type ?? 'NODE'} · ${payload.state}`);
+
+      setCurrentJob((previous) => {
+        if (!previous) return previous;
+
+        return {
+          ...previous,
+          nodes: previous.nodes.map((node) =>
+            node.id === payload.nodeId
+              ? { ...node, state: payload.state, outputsHash: payload.outputsHash }
+              : node,
+          ),
+        };
       });
     }
-    if (event === 'job.plan_created') {
-      setCurrentJob(prev => prev ? { ...prev, nodes: payload.plan } : prev);
+
+    if (eventType === 'job.plan_created') {
+      setCurrentJob((previous) => (previous ? { ...previous, nodes: payload.plan } : previous));
     }
-    if (event === 'security.alert') pushLog('error', `⚠ SECURITY ALERT: ${payload.message}`);
+
+    if (eventType === 'security.alert') {
+      pushLog('error', `Security alert · ${payload.message}`);
+    }
   });
 
-  // Poll health
   useEffect(() => {
-    const tick = () => apiGet<any>('/api/health').then(setHealth).catch(() => {});
-    tick(); const id = setInterval(tick, 8000);
-    return () => clearInterval(id);
+    const tick = () => {
+      apiGet<any>('/api/health')
+        .then(setHealth)
+        .catch(() => {});
+    };
+
+    tick();
+    const interval = setInterval(tick, 8000);
+    return () => clearInterval(interval);
   }, []);
 
-  const toggleCap = (cap: Capability) => {
-    setSelectedCaps(prev => {
-      const next = new Set(prev);
-      next.has(cap) ? next.delete(cap) : next.add(cap);
-      return next;
-    });
-  };
+  useEffect(() => {
+    if (!currentJob?.id) return;
+
+    apiGet<any>(`/api/jobs/${currentJob.id}`)
+      .then((job) => setCurrentJob((previous) => previous ? { ...previous, ...job } : job))
+      .catch(() => {});
+  }, [currentJob?.id]);
 
   const submitJob = async () => {
-    if (!prompt.trim() || selectedCaps.size === 0) return;
+    if (!prompt.trim()) return;
+
     setSubmitting(true);
-    setCitations([]); setArtifacts([]);
+    setCitations([]);
+    setArtifacts([]);
+
     try {
+      const requestCapabilities: Capability[] = Array.isArray(currentJob?.request?.capabilities)
+        ? (currentJob.request.capabilities as Capability[])
+        : ['GENERAL_REASONING'];
+
       const job = await apiPost<Job>('/api/jobs', {
         intent: prompt,
-        capabilities: Array.from(selectedCaps),
-        riskLevel
+        capabilities: requestCapabilities,
+        riskLevel,
       });
+
       setCurrentJob(job);
-      pushLog('job', `Submitted job ${job.id?.slice(0,12)}…`);
+      pushLog('job', `Submitted job · ${job.id?.slice(0, 12)}…`);
     } catch (e: any) {
-      pushLog('error', `Error: ${e.message}`);
+      pushLog('error', `Request failed · ${e.message}`);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
-  const isSovereign = health?.sovereignMode;
+  const plannedCapabilities = (currentJob?.request?.capabilities as Capability[] | undefined) ?? [];
+
+  const trustedResultText = useMemo(() => {
+    if (!currentJob) {
+      return 'No verified result yet. The system is still processing the task.';
+    }
+
+    if (currentJob.status === 'FAILED') {
+      return 'Execution failed. A trusted result could not be produced.';
+    }
+
+    if (currentJob.status === 'BLOCKED') {
+      return 'Result blocked. A safety or policy gate stopped the pipeline.';
+    }
+
+    if (currentJob.status === 'PARTIAL') {
+      return 'Partial result. Verification did not complete for all required checks.';
+    }
+
+    if (currentJob.status === 'COMPLETED' || currentJob.status === 'SUCCESS' || currentJob.status === 'VERIFIED') {
+      return 'Execution completed. Review the evidence and audit record before accepting the result.';
+    }
+
+    return 'Execution is in progress. The verified result will appear when the pipeline completes.';
+  }, [currentJob]);
+
+  const isSovereign = Boolean(health?.sovereignMode);
 
   return (
     <div className="app-layout">
-      {/* ─── Topbar ──────────────────────────────────────── */}
       <header className="topbar">
-        <div className="topbar-logo">
-          <div className="topbar-logo-icon">⚙</div>
-          SIH 2026 · Sovereign AI Workbench
+        <div className="brand-wrap">
+          <div className="brand-mark">S</div>
+          <div>
+            <div className="brand-title">Sovereign</div>
+            <div className="brand-subtitle">Industrial AI Workbench</div>
+          </div>
         </div>
-        <div className="topbar-divider" />
-        <span className={`topbar-badge ${isSovereign ? 'sovereign' : 'dev'}`}>
-          {isSovereign ? '🛡 SOVEREIGN' : '⚠ DEV MODE'}
-        </span>
-        <div className="topbar-spacer" />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-          <span className={`status-dot ${wsConnected ? 'up' : 'down'}`} />
-          {wsConnected ? 'WS Live' : 'WS Offline'}
-          <span className={`status-dot ${health?.components?.api?.status === 'UP' ? 'up' : 'down'}`} />
-          API
+
+        <div className="topbar-context">
+          <span className="crumb">SIH 2026</span>
+          <span className="crumb-separator">/</span>
+          <strong>{navView === 'workbench' ? 'Workbench' : navView === 'knowledge' ? 'Knowledge & RAG' : 'Tool Gateway'}</strong>
+        </div>
+
+        <div className="topbar-search">
+          <span>⌕</span>
+          <span>Search parameters, documents or telemetry…</span>
+          <kbd>Ctrl K</kbd>
+        </div>
+
+        <div className="topbar-right">
+          <span className={`state-pill ${isSovereign ? 'sovereign' : 'dev'}`}>
+            <span className="live-dot" />
+            {isSovereign ? 'SOVEREIGN' : 'DEV MODE'}
+          </span>
+
+          <span className="topbar-stat">WS {wsConnected ? 'LIVE' : 'OFFLINE'}</span>
+          <span className="topbar-stat">API {health?.components?.api?.status === 'UP' ? 'READY' : '—'}</span>
+
+          <div className="avatar">LR</div>
         </div>
       </header>
 
-      {/* ─── Sidebar ─────────────────────────────────────── */}
       <aside className="sidebar">
-        <div className="sidebar-section">
-          <div className="sidebar-section-label">Workbench</div>
-          {([['workbench','⬡','AI Workbench'],['knowledge','📚','Knowledge']] as const).map(([v,icon,label]) => (
-            <button key={v} className={`nav-item ${navView===v?'active':''}`} onClick={() => setNavView(v as any)}>
-              <span className="icon">{icon}</span>{label}
+        <div>
+          <div className="sidebar-group">
+            <div className="sidebar-label">WORK</div>
+            <button className={`nav-item ${navView === 'workbench' ? 'active' : ''}`} onClick={() => setNavView('workbench')}>
+              <span>◈</span>
+              Workbench
             </button>
-          ))}
-        </div>
-        <div className="sidebar-section">
-          <div className="sidebar-section-label">Operations</div>
-          {([['tools','🔧','Tool Gateway']] as const).map(([v,icon,label]) => (
-            <button key={v} className={`nav-item ${navView===v?'active':''}`} onClick={() => setNavView(v as any)}>
-              <span className="icon">{icon}</span>{label}
+            <button className={`nav-item ${navView === 'knowledge' ? 'active' : ''}`} onClick={() => setNavView('knowledge')}>
+              <span>▣</span>
+              Knowledge & RAG
             </button>
-          ))}
+          </div>
+
+          <div className="sidebar-group">
+            <div className="sidebar-label">OPERATIONS</div>
+            <button className={`nav-item ${navView === 'tools' ? 'active' : ''}`} onClick={() => setNavView('tools')}>
+              <span>⌘</span>
+              Tool Gateway
+            </button>
+            <button className="nav-item" onClick={() => setRightTab('security')}>
+              <span>◇</span>
+              Security State
+            </button>
+          </div>
+
+          <div className="sidebar-group">
+            <div className="sidebar-label">PROOF</div>
+            <button className="nav-item" onClick={() => setRightTab('evidence')}>
+              <span>⌁</span>
+              Evidence
+            </button>
+            <button className="nav-item" onClick={() => setRightTab('audit')}>
+              <span>⌁</span>
+              Audit & Governance
+            </button>
+            <button className="nav-item" onClick={() => setRightTab('artifacts')}>
+              <span>□</span>
+              Artifacts
+            </button>
+          </div>
         </div>
-        {currentJob && (
-          <div className="sidebar-section" style={{ marginTop: 'auto', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <div className="sidebar-section-label">Current Job</div>
-            <div style={{ padding: '4px 8px', fontSize: 11, color: 'var(--text-muted)' }}>
-              <div style={{ fontFamily: 'Courier New', wordBreak: 'break-all' }}>{currentJob.id?.slice(0, 18)}…</div>
-              <span className={`tag`} style={{ marginTop: 4, background: currentJob.status === 'COMPLETED' ? 'rgba(61,214,140,0.15)' : 'rgba(76,159,255,0.12)', color: currentJob.status === 'COMPLETED' ? 'var(--accent-green)' : 'var(--accent-blue)' }}>
-                {currentJob.status}
-              </span>
+
+        <div className="sidebar-footer">
+          <div className="enclave-card">
+            <div className="eyebrow">ENCLAVE STATE</div>
+            <div className="enclave-status">
+              <span className="live-dot" />
+              {isSovereign ? 'Sovereign runtime' : 'Development runtime'}
+            </div>
+
+            <div className="proof-line">
+              <span>Proof root</span>
+              <strong>{currentJob?.id ? `${currentJob.id.slice(0, 12)}…` : 'Awaiting job'}</strong>
             </div>
           </div>
-        )}
+
+          <div className="sidebar-version">SOVEREIGN v1.0 · SIH 2026</div>
+        </div>
       </aside>
 
-      {/* ─── Main ────────────────────────────────────────── */}
       <main className="main-content">
-        {navView === 'workbench' && <>
-          {/* Job submission form */}
-          <div className="job-form-area">
-            <div>
-              <label className="form-label">Task / Prompt</label>
-              <textarea
-                className="prompt-input"
-                placeholder="Describe the industrial task… e.g. 'Check pipe wall thickness for 8-inch line at 12 MPa design pressure.'"
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="form-label">Capabilities</label>
-              <div className="capability-grid">
-                {ALL_CAPABILITIES.map(cap => (
-                  <label key={cap.key} className={`cap-toggle ${selectedCaps.has(cap.key) ? 'selected' : ''}`}>
-                    <input type="checkbox" checked={selectedCaps.has(cap.key)} onChange={() => toggleCap(cap.key)} />
-                    {cap.icon} {cap.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {navView === 'workbench' && (
+          <>
+            <section className="hero panel">
               <div>
-                <label className="form-label">Risk Level</label>
-                <select
-                  value={riskLevel}
-                  onChange={e => setRiskLevel(e.target.value as RiskLevel)}
-                  style={{ background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', padding: '7px 10px', fontSize: 13, outline: 'none' }}
-                >
-                  {(['LOW','MEDIUM','HIGH','CRITICAL'] as const).map(r => <option key={r}>{r}</option>)}
-                </select>
+                <span className="eyebrow">SOVEREIGN INDUSTRIAL AI WORKBENCH</span>
+                <h1>Engineering intelligence,<br />without the cloud.</h1>
+                <p>Turn an industrial problem into a verified result using local AI, deterministic tools, controlled knowledge and traceable evidence.</p>
               </div>
-              <button
-                className="btn btn-primary"
-                style={{ marginTop: 18, alignSelf: 'flex-end' }}
-                onClick={submitJob}
-                disabled={submitting || !prompt.trim() || selectedCaps.size === 0}
-              >
-                {submitting ? <><span className="spinner" />Submitting…</> : '▶ Run Job'}
-              </button>
+
+              <div className="hero-side">
+                <span>LOCAL MODELS</span>
+                <span>DETERMINISTIC TOOLS</span>
+                <span>VERIFIED EVIDENCE</span>
+              </div>
+            </section>
+
+            <section className="info-stack">
+              <div className="panel workflow-card">
+                <div className="section-kicker">HOW IT WORKS</div>
+                <div className="flow-steps">
+                  {[
+                    ['01', 'UNDERSTAND', 'The system interprets the request.'],
+                    ['02', 'PLAN', 'Required capabilities are selected automatically.'],
+                    ['03', 'EXECUTE', 'Local AI and deterministic tools perform the work.'],
+                    ['04', 'VERIFY', 'The result is checked before being trusted.'],
+                    ['05', 'PROVE', 'Evidence and execution history are recorded.'],
+                    ['06', 'DELIVER', 'The verified result or artifact is returned.'],
+                  ].map(([step, title, text]) => (
+                    <div className="flow-step" key={step}>
+                      <span className="flow-number">{step}</span>
+                      <div className="flow-labels">
+                        <strong>{title}</strong>
+                        <small>{text}</small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="panel status-card">
+                <div className="section-kicker">LOCAL RUNTIME</div>
+                <div className="status-grid">
+                  <div>
+                    <span>Model</span>
+                    <strong>{health?.components?.models?.[0]?.name ?? 'Waiting for runtime'}</strong>
+                  </div>
+                  <div>
+                    <span>Location</span>
+                    <strong>Local</strong>
+                  </div>
+                  <div>
+                    <span>Network</span>
+                    <strong>{health?.networkPolicy?.cloudInferenceAllowed ? 'Cloud inference allowed' : 'No cloud inference'}</strong>
+                  </div>
+                  <div>
+                    <span>Status</span>
+                    <strong className={health?.components?.models?.some((m: any) => m.available) ? 'status-ready' : 'status-unavailable'}>
+                      {health?.components?.models?.some((m: any) => m.available) ? 'Ready' : 'Waiting for runtime'}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="panel orchestrator">
+              <div className="orchestrator-head">
+                <div>
+                  <div className="section-kicker">TASK ORCHESTRATOR</div>
+                  <h2>What do you need to solve?</h2>
+                </div>
+
+                <div className="risk-control">
+                  <span>Risk</span>
+                  <select value={riskLevel} onChange={(e) => setRiskLevel(e.target.value as RiskLevel)}>
+                    {RISK_OPTIONS.map((level) => (
+                      <option key={level} value={level}>{level}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <textarea
+                className="hero-input"
+                placeholder="Describe an engineering or industrial task…"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+              />
+
+              <div className="helper-text">
+                Example: Calculate required pipe wall thickness using the supplied design parameters and the applicable engineering standard.
+              </div>
+
+              <div className="orchestrator-actions">
+                <button className="btn btn-dark run-button" onClick={submitJob} disabled={submitting || !prompt.trim()}>
+                  {submitting ? (
+                    <>
+                      <span className="spinner" />
+                      Running…
+                    </>
+                  ) : (
+                    <>
+                      Run sovereign pipeline
+                      <span className="cta-arrow">→</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </section>
+
+            <section className="panel system-plan">
+              <div className="section-kicker">SYSTEM PLAN</div>
+              {plannedCapabilities.length ? (
+                <>
+                  <h3>System-selected execution plan</h3>
+                  <div className="plan-list">
+                    {plannedCapabilities.map((capability) => (
+                      <div className="plan-item" key={capability}>
+                        <span className="plan-check">✓</span>
+                        <div>
+                          <strong>{CAPABILITY_DETAILS[capability]?.label ?? capability}</strong>
+                          <small>{CAPABILITY_DETAILS[capability]?.description ?? 'Required capability selected by the backend planner.'}</small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3>Capabilities will be selected automatically from your task.</h3>
+                  <div className="plan-empty">Describe your task and the system will determine the required capabilities.</div>
+                </>
+              )}
+            </section>
+
+            <div className="main-lower-grid">
+              <section className="panel execution-panel">
+                <div className="section-kicker">WHAT THE WORKBENCH IS DOING</div>
+                <h3>Execution stages</h3>
+                <ExecutionGraph nodes={currentJob?.nodes ?? []} />
+                <LogStream events={logs} />
+              </section>
+
+              <section className="panel trusted-result-panel">
+                <div className="section-kicker">TRUSTED RESULT</div>
+                <h3>Verified outcome</h3>
+                <div className="result-state">
+                  {trustedResultText}
+                </div>
+                <div className="result-summary">
+                  {currentJob ? `Job ${currentJob.id.slice(0, 12)}…` : 'Awaiting execution'}
+                </div>
+              </section>
             </div>
-          </div>
 
-          {/* Execution graph */}
-          <div className="panel-header">
-            <span className="section-title">⬡ Execution Graph</span>
-            {currentJob && <span className="tag">{currentJob.nodes.length} nodes</span>}
-          </div>
-          <div className="graph-area">
-            <ExecutionGraph nodes={currentJob?.nodes ?? []} />
-          </div>
-
-          {/* Log stream */}
-          <div style={{ padding: '0 18px 0' }}>
-            <div className="panel-header" style={{ padding: '10px 0', border: 'none' }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>Event Log</span>
+            <div className="lower-grid">
+              <QuickAiChat />
             </div>
-            <LogStream events={logs} />
-          </div>
-
-          {/* Quick AI Chat */}
-          <QuickAiChat />
-        </>}
+          </>
+        )}
 
         {navView === 'knowledge' && <KnowledgeView />}
-        {navView === 'tools'     && <ToolsView />}
+        {navView === 'tools' && <ToolsView />}
       </main>
 
-      {/* ─── Right Panel ─────────────────────────────────── */}
-      <aside className="right-panel">
-        <div className="panel-tabs">
-          {([['evidence','📚','Evidence'],['artifacts','📄','Artifacts'],['security','🛡','Security'],['audit','🔏','Audit']] as const).map(([k,icon,label]) => (
-            <button key={k} className={`panel-tab ${rightTab===k?'active':''}`} onClick={() => setRightTab(k)}>
-              {icon} {label}
+      <aside className="right-rail">
+        <div className="right-tabs">
+          {(['evidence', 'artifacts', 'security', 'audit'] as RightTab[]).map((tab) => (
+            <button
+              key={tab}
+              className={`tab-button ${rightTab === tab ? 'active' : ''}`}
+              onClick={() => setRightTab(tab)}
+            >
+              {tab === 'evidence' ? 'Evidence' : tab === 'artifacts' ? 'Artifacts' : tab === 'security' ? 'Security' : 'Audit'}
             </button>
           ))}
         </div>
-        <div className="panel-body">
-          {rightTab === 'evidence'  && <EvidencePanel citations={citations} />}
-          {rightTab === 'artifacts' && <ArtifactsPanel artifacts={artifacts} jobId={currentJob?.id ?? null} />}
-          {rightTab === 'security'  && <SecurityPanel health={health} />}
-          {rightTab === 'audit'     && <AuditPanel jobId={currentJob?.id ?? null} />}
-        </div>
+
+        {rightTab === 'evidence' && <EvidencePanel citations={citations} />}
+        {rightTab === 'artifacts' && <ArtifactsPanel artifacts={artifacts} jobId={currentJob?.id ?? null} />}
+        {rightTab === 'security' && <SecurityPanel health={health} />}
+        {rightTab === 'audit' && <AuditPanel jobId={currentJob?.id ?? null} />}
       </aside>
     </div>
   );

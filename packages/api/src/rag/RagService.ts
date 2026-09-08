@@ -20,30 +20,28 @@ export interface RagResponse {
   context: string;
   retrieverUsed: 'vector' | 'bm25' | 'none';
   documentCount: number;
+  status: 'READY' | 'DEGRADED' | 'EMPTY';
 }
 
 export class RagService {
   async ingestDocument(doc: Document): Promise<void> {
     bm25Index.ingest(doc);
     logger.info({ docId: doc.id, title: doc.title }, 'Document ingested into BM25 index');
-    // Vector ingestion would happen here if Qdrant + embedding model are available
-    // For now, deferred – vector store is optional
   }
 
   async search(query: string, topK = 5): Promise<RagResponse> {
     if (!query || query.trim().length === 0) {
-      return { citations: [], context: '', retrieverUsed: 'none', documentCount: bm25Index.getDocumentCount() };
+      return { citations: [], context: '', retrieverUsed: 'none', documentCount: bm25Index.getDocumentCount(), status: 'EMPTY' };
     }
 
-    // Try vector first (not implemented yet without embedding model; falls through)
     const qdrantAvailable = await vectorSearch.isAvailable();
     let results: SearchResult[] = [];
     let retrieverUsed: 'vector' | 'bm25' = 'bm25';
+    let status: 'READY' | 'DEGRADED' | 'EMPTY' = 'READY';
 
     if (qdrantAvailable) {
-      // TODO: embed query using local model and query Qdrant
-      // For now fall through to BM25
-      logger.info('Qdrant available but embedding model not yet wired; falling back to BM25');
+      logger.info('Qdrant available but embedding model not yet wired; BM25 remains the active retriever for this build.');
+      status = 'DEGRADED';
     }
 
     results = bm25Index.search(query, topK);
@@ -51,6 +49,7 @@ export class RagService {
 
     if (results.length === 0) {
       logger.warn({ query }, 'RAG search returned no results');
+      status = 'EMPTY';
     }
 
     const citations: Citation[] = results.map(r => ({
@@ -70,7 +69,8 @@ export class RagService {
       citations,
       context,
       retrieverUsed,
-      documentCount: bm25Index.getDocumentCount()
+      documentCount: bm25Index.getDocumentCount(),
+      status
     };
   }
 }

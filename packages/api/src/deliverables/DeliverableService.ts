@@ -7,6 +7,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import * as xlsx from 'xlsx';
 
 const logger = pino();
+const artifactStoreFile = path.resolve(process.cwd(), '.runtime', 'artifacts.json');
 
 export type DeliverableType = 'DOCX' | 'XLSX' | 'PDF' | 'PPTX';
 
@@ -24,8 +25,22 @@ export interface ArtifactRecord {
   sizeBytes: number;
 }
 
-/** All generated artifacts stored in-memory; would persist to DB/object store in production */
-const artifactStore = new Map<string, ArtifactRecord>();
+function loadArtifactStore(): Map<string, ArtifactRecord> {
+  try {
+    const raw = fs.readFileSync(artifactStoreFile, 'utf8');
+    const parsed = JSON.parse(raw) as Record<string, ArtifactRecord>;
+    return new Map(Object.entries(parsed));
+  } catch {
+    return new Map();
+  }
+}
+
+const artifactStore = loadArtifactStore();
+
+function persistArtifactStore() {
+  fs.mkdirSync(path.dirname(artifactStoreFile), { recursive: true });
+  fs.writeFileSync(artifactStoreFile, JSON.stringify(Object.fromEntries(artifactStore), null, 2), 'utf8');
+}
 
 export class DeliverableService {
   private outDir: string;
@@ -33,6 +48,7 @@ export class DeliverableService {
   constructor() {
     this.outDir = process.env.ARTIFACTS_DIR ?? path.join(process.cwd(), 'artifacts');
     if (!fs.existsSync(this.outDir)) fs.mkdirSync(this.outDir, { recursive: true });
+    if (!fs.existsSync(artifactStoreFile)) persistArtifactStore();
   }
 
   /** Generate a real DOCX file using docx package */
@@ -159,6 +175,7 @@ export class DeliverableService {
     };
 
     artifactStore.set(record.id, record);
+    persistArtifactStore();
     logger.info({ artifactId: record.id, jobId, filename, sha256 }, 'Artifact created');
     return record;
   }

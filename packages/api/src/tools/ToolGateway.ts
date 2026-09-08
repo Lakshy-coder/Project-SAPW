@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { toolRegistry, ToolExecutionRecord, ToolDefinition } from './ToolRegistry';
+import { policyEngine } from '../security/PolicyEngine';
 import pino from 'pino';
 
 const logger = pino();
@@ -12,10 +13,20 @@ export class ToolGateway {
     const tool = toolRegistry.getTool(toolId);
     if (!tool) throw new Error(`TOOL_NOT_FOUND: ${toolId}`);
 
-    // Permission check
-    const missing = tool.requiredPermissions.filter(p => !_userPermissions.includes(p));
-    if (missing.length > 0) {
-      throw new Error(`AUTH_ERROR: Missing permissions for tool ${toolId}: ${missing.join(', ')}`);
+    const decision = policyEngine.evaluateTool(
+      tool.id,
+      tool.requiredPermissions,
+      _userPermissions,
+      tool.riskLevel,
+      {
+        sovereignMode: process.env.SOVEREIGN_MODE === 'true',
+        executionEnvironment: process.env.SOVEREIGN_MODE === 'true' ? 'PRIVATE_LAN' : 'LOCAL',
+        sandboxAvailable: process.env.DOCKER_AVAILABLE === 'true'
+      }
+    );
+
+    if (!decision.allowed) {
+      throw new Error(`POLICY_ERROR: ${decision.reasons.join('; ')}`);
     }
 
     // Input validation

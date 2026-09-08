@@ -2,13 +2,20 @@ export const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
 export const WS_URL   = import.meta.env.VITE_WS_URL  ?? 'ws://localhost:3001';
 
 export type Capability =
-  | 'CODE_EXECUTION' | 'VISION_EXTRACTION' | 'SOP_RETRIEVAL'
-  | 'ASME_CALCULATION' | 'DOCUMENT_GENERATION' | 'POLICY_CHECK'
-  | 'SIGNED_AUDIT' | 'GENERAL_REASONING' | 'EMBEDDING';
+  | 'GENERAL_REASONING'
+  | 'CODE_GENERATION'
+  | 'CODE_EXECUTION'
+  | 'VISION_EXTRACTION'
+  | 'SOP_RETRIEVAL'
+  | 'EMBEDDINGS'
+  | 'ASME_CALCULATION'
+  | 'DOCUMENT_GENERATION'
+  | 'POLICY_CHECK'
+  | 'SIGNED_AUDIT';
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-export type JobStatus = 'QUEUED' | 'RUNNING' | 'WAITING' | 'VERIFIED' | 'RETRYING' | 'BLOCKED' | 'FAILED' | 'COMPLETED' | 'CANCELLED';
-export type NodeStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'BLOCKED';
+export type JobStatus = 'QUEUED' | 'RUNNING' | 'WAITING' | 'VERIFIED' | 'RETRYING' | 'BLOCKED' | 'FAILED' | 'COMPLETED' | 'CANCELLED' | 'SUCCESS' | 'PARTIAL';
+export type NodeStatus = 'QUEUED' | 'RUNNING' | 'WAITING' | 'VERIFIED' | 'RETRYING' | 'BLOCKED' | 'FAILED' | 'COMPLETED' | 'CANCELLED' | 'SUCCESS' | 'PARTIAL' | 'PENDING';
 
 export interface ExecutionNode {
   id: string; jobId: string; type: string; state: NodeStatus;
@@ -32,14 +39,16 @@ export interface ArtifactRecord {
 export interface WsEvent { event: string; payload: any; timestamp: string; }
 
 export const ALL_CAPABILITIES: { key: Capability; label: string; icon: string }[] = [
-  { key: 'GENERAL_REASONING',   label: 'Reasoning',        icon: '🧠' },
-  { key: 'CODE_EXECUTION',      label: 'Code Exec',        icon: '💻' },
-  { key: 'VISION_EXTRACTION',   label: 'Vision',           icon: '👁' },
-  { key: 'SOP_RETRIEVAL',       label: 'SOP / RAG',        icon: '📚' },
-  { key: 'ASME_CALCULATION',    label: 'Eng. Calc',        icon: '📐' },
-  { key: 'DOCUMENT_GENERATION', label: 'Deliverable',      icon: '📄' },
-  { key: 'POLICY_CHECK',        label: 'Policy',           icon: '🛡' },
-  { key: 'SIGNED_AUDIT',        label: 'Audit',            icon: '🔏' },
+  { key: 'GENERAL_REASONING',   label: 'Reasoning',          icon: '🧠' },
+  { key: 'CODE_GENERATION',     label: 'Code Gen',           icon: '⚙️' },
+  { key: 'CODE_EXECUTION',      label: 'Code Exec',          icon: '💻' },
+  { key: 'VISION_EXTRACTION',   label: 'Vision',             icon: '👁' },
+  { key: 'SOP_RETRIEVAL',       label: 'SOP / RAG',          icon: '📚' },
+  { key: 'EMBEDDINGS',          label: 'Embeddings',         icon: '🧠' },
+  { key: 'ASME_CALCULATION',    label: 'Eng. Calc',          icon: '📐' },
+  { key: 'DOCUMENT_GENERATION', label: 'Deliverable',        icon: '📄' },
+  { key: 'POLICY_CHECK',        label: 'Policy',             icon: '🛡' },
+  { key: 'SIGNED_AUDIT',        label: 'Audit',              icon: '🔏' },
 ];
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
