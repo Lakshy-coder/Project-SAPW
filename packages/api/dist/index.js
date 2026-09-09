@@ -12,7 +12,6 @@ const http_1 = require("http");
 const ws_1 = require("ws");
 const WebSocketService_1 = require("./services/WebSocketService");
 const ExecutionGraph_1 = require("./orchestrator/ExecutionGraph");
-const core_1 = require("@sih2k26/core");
 const CapabilityRegistry_1 = require("./models/CapabilityRegistry");
 const OllamaAdapter_1 = require("./models/adapters/OllamaAdapter");
 // Tools — import to trigger self-registration
@@ -27,6 +26,7 @@ const audit_1 = require("./routes/audit");
 const artifacts_1 = require("./routes/artifacts");
 const sovereignty_1 = require("./routes/sovereignty");
 const ai_1 = require("./routes/ai");
+const auth_1 = require("./routes/auth");
 // ─── Model Registration ──────────────────────────────────────────────────────
 CapabilityRegistry_1.capabilityRegistry.register(OllamaAdapter_1.ollamaAdapter);
 // ─── Logger ──────────────────────────────────────────────────────────────────
@@ -52,6 +52,7 @@ app.use('/api/audit', audit_1.auditRouter);
 app.use('/api/artifacts', artifacts_1.artifactsRouter);
 app.use('/api/sovereignty', sovereignty_1.sovereigntyRouter);
 app.use('/api/ai', ai_1.aiRouter);
+app.use('/api/auth', auth_1.authRouter);
 // ─── POST /api/jobs  (create + run a new job) ─────────────────────────────────
 // Defined here so ExecutionGraph has access to wsService
 const server = (0, http_1.createServer)(app);
@@ -59,18 +60,8 @@ exports.server = server;
 const wss = new ws_1.WebSocketServer({ server });
 const wsService = new WebSocketService_1.WebSocketService(wss);
 const executionGraph = new ExecutionGraph_1.ExecutionGraph(wsService);
-app.post('/api/jobs', async (req, res) => {
-    try {
-        const request = core_1.JobRequestSchema.parse(req.body);
-        // Create job and queue for execution - return immediately with jobId
-        // Execution runs in background and emits events over WebSocket
-        const job = await executionGraph.createAndQueueJob(request, 'user-dev', 'project-dev');
-        res.status(202).json(job); // 202 Accepted - job accepted, processing asynchronously
-    }
-    catch (err) {
-        res.status(400).json({ error: err.message });
-    }
-});
+// NOTE: Job creation route moved to routes/jobs.ts with authentication
+// This endpoint is kept for backward compatibility but should not be used in production
 // ─── 404 fallthrough ─────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'NOT_FOUND' }));
 // ─── Global error handler ────────────────────────────────────────────────────

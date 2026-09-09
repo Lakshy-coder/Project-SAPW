@@ -5,8 +5,8 @@
     "userId": "user-1",
     "workflowVersion": "1.0",
     "status": "RUNNING",
-    "createdAt": "2026-09-08T11:21:39.405Z",
-    "updatedAt": "2026-09-08T11:21:39.409Z",
+    "createdAt": "2026-09-09T11:59:30.864Z",
+    "updatedAt": "2026-09-09T11:59:30.866Z",
     "request": {
       "id": "persisted-job-1",
       "intent": "Persist a job",

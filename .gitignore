@@ -1,41 +1,28 @@
 ```
+# Build artifacts
+dist/
+build/
+*.js
+*.tsbuildinfo
+
 # Dependencies
 node_modules/
 
-# Environment variables
+# Environment
 .env
 .env.local
-.env.*
+*.env.*
 
-# Logs
-*.log
-
-# IDE specific
+# Editors
 .vscode/
 .idea/
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-.venv.bak/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
+# Logs and temp files
 *.log
-.gitattributes
-.next
-netlify
-netlify/*
+*.tmp
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db
 ```

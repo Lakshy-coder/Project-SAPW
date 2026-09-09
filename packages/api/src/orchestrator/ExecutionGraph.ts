@@ -96,8 +96,12 @@ export class ExecutionGraph {
         return;
       }
 
+      // Get user permissions from auth context (passed from route)
+      // Default to empty permissions if not provided (will be blocked by policy)
+      const userPermissions = (request as any).userPermissions || [];
+
       const decision = policyEngine.evaluateJob(request, {
-        userPermissions: ['jobs:create', 'jobs:high-risk'],
+        userPermissions,
         projectPolicy: 'DEFAULT',
         modelEndpoint: process.env.OLLAMA_BASE_URL,
         executionEnvironment: process.env.SOVEREIGN_MODE === 'true' ? 'PRIVATE_LAN' : 'LOCAL',

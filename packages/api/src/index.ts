@@ -24,6 +24,10 @@ import { auditRouter } from './routes/audit';
 import { artifactsRouter } from './routes/artifacts';
 import { sovereigntyRouter } from './routes/sovereignty';
 import { aiRouter } from './routes/ai';
+import { authRouter } from './routes/auth';
+
+// Auth middleware
+import { requireAuth, requirePermission } from './auth/middleware';
 
 // ─── Model Registration ──────────────────────────────────────────────────────
 capabilityRegistry.register(ollamaAdapter);
@@ -52,6 +56,7 @@ app.use('/api/audit',      auditRouter);
 app.use('/api/artifacts',  artifactsRouter);
 app.use('/api/sovereignty', sovereigntyRouter);
 app.use('/api/ai',         aiRouter);
+app.use('/api/auth',        authRouter);
 
 // ─── POST /api/jobs  (create + run a new job) ─────────────────────────────────
 // Defined here so ExecutionGraph has access to wsService
@@ -60,17 +65,8 @@ const wss    = new WebSocketServer({ server });
 const wsService      = new WebSocketService(wss);
 const executionGraph = new ExecutionGraph(wsService);
 
-app.post('/api/jobs', async (req, res) => {
-  try {
-    const request = JobRequestSchema.parse(req.body);
-    // Create job and queue for execution - return immediately with jobId
-    // Execution runs in background and emits events over WebSocket
-    const job = await executionGraph.createAndQueueJob(request, 'user-dev', 'project-dev');
-    res.status(202).json(job);  // 202 Accepted - job accepted, processing asynchronously
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
-  }
-});
+// NOTE: Job creation route moved to routes/jobs.ts with authentication
+// This endpoint is kept for backward compatibility but should not be used in production
 
 // ─── 404 fallthrough ─────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'NOT_FOUND' }));
