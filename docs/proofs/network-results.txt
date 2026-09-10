@@ -1,0 +1,11 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90mD:/SIH2K26[39m
+
+{"level":50,"time":1788804593052,"pid":7276,"hostname":"Lakshya_Rana","v":{"id":"viol-1","remoteAddress":"8.8.8.8","remotePort":443,"reason":"PUBLIC_WAN connection attempted in SOVEREIGN mode","timestamp":"2026-09-07T18:09:53.051Z"},"msg":"SECURITY_ALERT: Sovereignty policy violation"}
+ [32m✓[39m packages/api/tests/network.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m   Start at [22m 23:39:52
+[2m   Duration [22m 253ms[2m (import 49%, transform 38%, tests 7%, worker 5%)[22m
+

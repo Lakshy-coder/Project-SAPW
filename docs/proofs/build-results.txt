@@ -1,0 +1,26 @@
+
+> build
+> npm run build --workspaces --if-present
+
+
+> @sih2k26/api@1.0.0 build
+> tsc
+
+
+> @sih2k26/core@1.0.0 build
+> tsc
+
+
+> workbench@0.0.0 build
+> tsc -b && vite build
+
+[36mvite v8.2.2 [32mbuilding client environment for production...[36m[39m
+transforming...
+✓ 18 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.45 kB │ gzip:  0.29 kB
+dist/assets/index-Ba5y3z-r.css   10.33 kB │ gzip:  2.68 kB
+dist/assets/index-D1mbxanJ.js   214.56 kB │ gzip: 66.20 kB
+
+[32m✓ built in 180ms[39m
