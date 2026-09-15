@@ -43,12 +43,22 @@ export class OllamaAdapter implements ModelProvider {
 
   private get modelName() {
     this.syncRuntimeConfig();
-    return process.env.OLLAMA_MODEL || 'qwen3:4b';
+    return process.env.OLLAMA_MODEL || 'qwen3:1.7b';
   }
 
   private get timeoutMs() {
     this.syncRuntimeConfig();
     return parseInt(process.env.OLLAMA_TIMEOUT_MS || '300000', 10);
+  }
+
+  /**
+   * Bounded generation limit — prevents the model from generating thousands of tokens
+   * for concise engineering synthesis tasks. Configurable via OLLAMA_NUM_PREDICT.
+   * Default: 384 tokens (~300 words), sufficient for a concise engineering explanation.
+   */
+  private get numPredict() {
+    this.syncRuntimeConfig();
+    return parseInt(process.env.OLLAMA_NUM_PREDICT || '384', 10);
   }
 
   async isAvailable(): Promise<boolean> {
@@ -67,15 +77,15 @@ export class OllamaAdapter implements ModelProvider {
    * execute() satisfies the ModelProvider interface.
    * For chat-style calls with a systemPrompt, use chat() directly.
    */
-  async execute(prompt: string, _capabilities: Capability[]): Promise<string> {
-    return this.chat(prompt);
+  async execute(prompt: string, _capabilities: Capability[], options?: { signal?: AbortSignal }): Promise<string> {
+    return this.chat(prompt, undefined, options);
   }
 
   /**
    * chat() calls Ollama POST /api/chat with the messages array.
    * Supports an optional systemPrompt prepended as a system message.
    */
-  async chat(userMessage: string, systemPrompt?: string): Promise<string> {
+  async chat(userMessage: string, systemPrompt?: string, options?: { signal?: AbortSignal }): Promise<string> {
     this.syncRuntimeConfig();
     if (!userMessage || !userMessage.trim()) {
       throw new Error('INVALID_INPUT: message must be a non-empty string');
@@ -87,6 +97,18 @@ export class OllamaAdapter implements ModelProvider {
     }
     messages.push({ role: 'user', content: userMessage.trim() });
 
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(new Error('TIMEOUT')), this.timeoutMs);
+    
+    const abortListener = () => timeoutController.abort(options?.signal?.reason);
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        clearTimeout(timeoutId);
+        throw new Error('OLLAMA_CANCELLED: request was aborted before execution');
+      }
+      options.signal.addEventListener('abort', abortListener);
+    }
+
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}/api/chat`, {
@@ -95,15 +117,29 @@ export class OllamaAdapter implements ModelProvider {
         body: JSON.stringify({
           model: this.modelName,
           messages,
-          stream: false
+          stream: false,
+          options: {
+            think: false,
+            num_predict: this.numPredict
+          }
         }),
-        signal: AbortSignal.timeout(this.timeoutMs)
+        signal: timeoutController.signal
       });
+      clearTimeout(timeoutId);
     } catch (err: any) {
-      if (err.name === 'TimeoutError') {
-        throw new Error('OLLAMA_TIMEOUT: request timed out after 120s');
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError' || err.message === 'TIMEOUT' || err.name === 'TimeoutError') {
+        const isCancelled = options?.signal?.aborted;
+        throw new Error(isCancelled ? 'OLLAMA_CANCELLED: request was aborted' : `OLLAMA_TIMEOUT: request timed out after ${this.timeoutMs}ms`);
+      }
+      if (err.code === 'ECONNREFUSED' || err.message.includes('fetch failed')) {
+        throw new Error(`OLLAMA_UNAVAILABLE: Connection refused at ${this.baseUrl}. Is Ollama running?`);
       }
       throw new Error(`OLLAMA_UNAVAILABLE: ${err.message}`);
+    } finally {
+      if (options?.signal) {
+        options.signal.removeEventListener('abort', abortListener);
+      }
     }
 
     if (response.status === 404) {

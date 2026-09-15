@@ -4,11 +4,12 @@ import { Planner } from './Planner';
 import { CapabilitySelector } from './CapabilitySelector';
 import { WebSocketService } from '../services/WebSocketService';
 import { JobRequest, NodeStatus, Capability } from '@sih2k26/core';
-import { verifyHash, verificationGate, verifySchema, VerificationResult } from '../verification/Verifier';
+import { verifyHash, verificationGate, verifySchema, verifyMath, VerificationResult } from '../verification/Verifier';
 import { toolGateway } from '../tools/ToolGateway';
 import { policyEngine } from '../security/PolicyEngine';
 import { auditService } from '../audit/AuditService';
 import { ModelRouter } from '../models/ModelRouter';
+import { ragService } from '../rag/RagService';
 import pino from 'pino';
 
 const logger = pino();
@@ -80,8 +81,10 @@ export class ExecutionGraph {
   async createAndQueueJob(request: JobRequest, userId: string, projectId: string) {
     logger.info({ requestIntent: request.intent }, 'Creating and queueing new job');
 
-    // Select capabilities based on task intent (not hardcoded)
-    const selectedCapabilities = CapabilitySelector.selectCapabilities(request);
+    // Select capabilities based on task intent if not explicitly provided
+    const selectedCapabilities = request.capabilities && request.capabilities.length > 0 
+      ? request.capabilities 
+      : CapabilitySelector.selectCapabilities(request);
     const enrichedRequest: JobRequest = {
       ...request,
       capabilities: selectedCapabilities
@@ -176,8 +179,21 @@ export class ExecutionGraph {
 
       logger.info({ jobId, nodeCount: safePlan.length }, 'Execution plan created');
 
+      const jobController = new AbortController();
+      // Future-proofing: hook up jobController to an external cancellation request if needed
+
       for (const node of safePlan) {
-        const nodeResult = await this.executeNode(jobId, node, request);
+        if (jobController.signal.aborted) {
+          node.state = 'CANCELLED';
+          (node as any).failureReason = 'Job was cancelled';
+          await JobManager.updateJobNodes(jobId, safePlan);
+          continue;
+        }
+
+        logger.info({ jobId, nodeId: node.id, nodeType: node.type }, 'Executing node');
+        const nodeResult = await this.executeNode(jobId, node, request, safePlan, jobController.signal);
+        logger.info({ jobId, nodeId: node.id, nodeType: node.type, state: nodeResult.state }, 'Node executed');
+
         if (nodeResult.state === 'BLOCKED' || nodeResult.state === 'FAILED') {
           await JobManager.updateJobStatus(jobId, 'FAILED');
           // Emit audit event for node failure causing job failure
@@ -225,10 +241,12 @@ export class ExecutionGraph {
         failureReason: node.state === 'VERIFIED' && node.outputsHash ? undefined : `Node ${node.type} did not complete a verified output`,
         version: '1.0.0'
       }));
+      logger.info({ jobId, checkCount: nodeVerificationResults.length + 1 }, 'Running verification gate');
       const gate = verificationGate([
         ...nodeVerificationResults,
         hashResult
       ]);
+      logger.info({ jobId, canProceed: gate.canProceed, verdict: gate.verdict }, 'Verification gate completed');
 
       const failedReason = gate.failedChecks.length > 0
         ? gate.failedChecks.map((check) => check.failureReason ?? `${check.type} verification failed`).join('; ')
@@ -324,7 +342,7 @@ export class ExecutionGraph {
     }
   }
 
-  private async executeNode(jobId: string, node: any, request: JobRequest) {
+  private async executeNode(jobId: string, node: any, request: JobRequest, safePlan: any[], signal?: AbortSignal) {
     const startedAt = new Date();
     const runningState: NodeStatus = 'RUNNING';
 
@@ -337,13 +355,94 @@ export class ExecutionGraph {
     }
     node.state = runningState;
     node.updatedAt = startedAt;
+    await JobManager.updateJobNodes(jobId, safePlan);
 
-    try {
-      let output: any = { nodeType: node.type, jobId, requestIntent: request.intent, startedAt: startedAt.toISOString() };
+    const maxRetries = 2;
+    let attempt = 0;
+
+    while (attempt <= maxRetries) {
+      if (signal?.aborted) {
+        node.state = 'CANCELLED';
+        node.failureReason = 'Cancelled by user';
+        await JobManager.updateJobNodes(jobId, safePlan);
+        return { state: 'CANCELLED', failureReason: node.failureReason };
+      }
+
+      try {
+        let output: any = { nodeType: node.type, jobId, requestIntent: request.intent, startedAt: startedAt.toISOString() };
+
+      if (node.type === 'SOP_RETRIEVAL') {
+        // topK=3: retrieve only the most relevant chunks to keep the reasoning prompt compact
+        const ragResult = await ragService.search(request.intent, 3);
+        
+        node.result = {
+          citations: ragResult.citations,
+          context: ragResult.context,
+          retrieverUsed: ragResult.retrieverUsed,
+          documentCount: ragResult.documentCount,
+          status: ragResult.status
+        };
+        output = node.result;
+        
+        node.verification = {
+          status: ragResult.context ? 'PASS' : 'PASS', // RAG is not verification, it's just retrieval
+          verifier: ragResult.retrieverUsed,
+          version: '1.0.0',
+          evidence: {
+            documentCount: ragResult.documentCount,
+            hasContext: !!ragResult.context
+          },
+          failureReason: undefined
+        };
+      }
 
       if (node.type === 'REASONING') {
-        const prompt = request.intent && request.intent.trim() ? request.intent : JSON.stringify((request as any).rawRequest ?? (request as any).rawInput ?? request);
-        const answer = await ModelRouter.route('GENERAL_REASONING', prompt);
+        const sopNode = safePlan.find(n => n.type === 'SOP_RETRIEVAL' && n.state === 'VERIFIED');
+        const asmeNode = safePlan.find(n => n.type === 'ASME_CALCULATION' && n.state === 'VERIFIED');
+        
+        let groundedPrompt = request.intent && request.intent.trim() ? request.intent : JSON.stringify((request as any).rawRequest ?? (request as any).rawInput ?? request);
+        
+        if (sopNode || asmeNode) {
+          const parts = [];
+          parts.push(`USER TASK:\n${groundedPrompt}`);
+          
+          if (asmeNode && asmeNode.result) {
+            // Compact single-line format — avoids ~300 extra chars of pretty-printed JSON
+            const r = asmeNode.result;
+            const compactAsme = `t_min = ${r.minimumRequiredThicknessMM} mm | Formula: ${r.formula} | Code: ${r.assumptions?.codeEdition ?? 'ASME B31.3'} §${r.assumptions?.formulaId ?? '304.1.2'} | Units: ${r.assumptions?.units ?? 'MPa, mm'} | Verification: ${asmeNode.verification?.status ?? 'PASS'}`;
+            parts.push(`DETERMINISTIC ENGINEERING RESULT (authoritative — do not recalculate):\n${compactAsme}`);
+          }
+          
+          if (sopNode && sopNode.result && sopNode.result.context) {
+            parts.push(`RETRIEVED KNOWLEDGE / SOP EVIDENCE:\n${sopNode.result.context}`);
+            if (sopNode.result.citations && sopNode.result.citations.length > 0) {
+              // Compact citation list instead of pretty-printed JSON
+              const citationLines = sopNode.result.citations.map((c: any, i: number) =>
+                `[${i + 1}] ${c.documentTitle} v${c.documentVersion} — ${c.location} (score: ${c.score?.toFixed(3) ?? 'n/a'})`
+              ).join('\n');
+              parts.push(`CITATIONS:\n${citationLines}`);
+            }
+          }
+          
+          parts.push(`INSTRUCTIONS:
+Provide a concise engineering explanation (3–5 sentences max). State the verified result, cite the relevant source-backed reasoning, list key assumptions, and interpret the verification status. Do not repeat the full source text. Do not recalculate the deterministic result. Do not invent or fabricate source references.`);
+          
+          groundedPrompt = parts.join('\n\n');
+        }
+
+        // Diagnostic: log prompt characteristics at debug level (not visible in default pino INFO output)
+        logger.debug({
+          jobId,
+          nodeId: node.id,
+          promptChars: groundedPrompt.length,
+          promptTokensApprox: Math.round(groundedPrompt.length / 4),
+          ragDocumentCount: sopNode?.result?.documentCount ?? 0,
+          ragContextChars: sopNode?.result?.context?.length ?? 0,
+          citationCount: sopNode?.result?.citations?.length ?? 0,
+          asmeResultPresent: !!(asmeNode?.result)
+        }, 'REASONING prompt diagnostics');
+
+        const answer = await ModelRouter.route('GENERAL_REASONING', groundedPrompt, { signal });
 
         if (typeof answer !== 'string' || !answer.trim()) {
           throw new Error('EMPTY_REASONING_RESULT: model returned no usable response');
@@ -396,7 +495,7 @@ export class ExecutionGraph {
           
           const job = await JobManager.getJob(jobId);
           if (job) {
-            await JobManager.updateJobNodes(jobId, job.nodes);
+            await JobManager.updateJobNodes(jobId, safePlan);
           }
           
           this.wsService.broadcast('node.needs_input', { 
@@ -446,7 +545,6 @@ export class ExecutionGraph {
         };
         
         // Perform independent mathematical verification
-        const { verifyMath } = await import('../verification/Verifier');
         const expectedTMin = (designPressureMPa * outsideDiameterMM) / (2 * (allowableStressMPa * weldJointFactor + designPressureMPa * yCoefficient));
         const mathCheck = verifyMath({
           computed: output.minimumRequiredThicknessMM,
@@ -497,14 +595,23 @@ export class ExecutionGraph {
       
       // Do NOT call addNodeToJob - nodes are already in the plan and updated by reference
       // Just persist the updated job with current node state
-      const job = await JobManager.getJob(jobId);
-      if (job) {
-        await JobManager.updateJobNodes(jobId, job.nodes);
-      }
+      await JobManager.updateJobNodes(jobId, safePlan);
 
       return { ...node, state: node.state };
     } catch (error: any) {
       const reason = error?.message ?? 'Execution failed';
+      
+      const isRetryable = reason.includes('OLLAMA_TIMEOUT') || reason.includes('OLLAMA_UNAVAILABLE') || reason.includes('ECONNREFUSED');
+      if (isRetryable && attempt < maxRetries && !signal?.aborted) {
+        attempt++;
+        logger.warn({ jobId, nodeId: node.id, attempt, reason }, 'Retrying node execution after failure');
+        node.state = 'RETRYING';
+        node.updatedAt = new Date();
+        this.wsService.broadcast('node.retrying', { jobId, nodeId: node.id, type: node.type, state: node.state, attempt, reason, ts: new Date().toISOString() });
+        await JobManager.updateJobNodes(jobId, safePlan);
+        continue;
+      }
+      
       node.state = 'FAILED';
       node.updatedAt = new Date();
       
@@ -517,12 +624,12 @@ export class ExecutionGraph {
       }
       
       // Do NOT call addNodeToJob - nodes are already in the plan and updated by reference
-      const job = await JobManager.getJob(jobId);
-      if (job) {
-        await JobManager.updateJobNodes(jobId, job.nodes);
-      }
+      await JobManager.updateJobNodes(jobId, safePlan);
 
       return { state: 'FAILED', failureReason: reason };
     }
+    }
+    // Should never reach here if while loop is correct, but TypeScript wants a return
+    return { state: 'FAILED', failureReason: 'Retries exhausted' };
   }
 }

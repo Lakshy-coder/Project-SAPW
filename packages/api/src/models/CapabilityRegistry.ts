@@ -5,7 +5,7 @@ export interface ModelProvider {
   name: string;
   capabilities: Capability[];
   isAvailable(): Promise<boolean>;
-  execute(prompt: string, capabilities: Capability[]): Promise<string>;
+  execute(prompt: string, capabilities: Capability[], options?: { signal?: AbortSignal }): Promise<string>;
 }
 
 export class CapabilityRegistry {
