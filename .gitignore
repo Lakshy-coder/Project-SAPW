@@ -1,9 +1,12 @@
-```
 # Build artifacts
 dist/
 build/
 *.js
 *.tsbuildinfo
+
+# Runtime / generated sensitive data
+.runtime/
+packages/api/.runtime/
 
 # Dependencies
 node_modules/
@@ -12,6 +15,12 @@ node_modules/
 .env
 .env.local
 *.env.*
+
+# Private keys / certificates
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Editors
 .vscode/
@@ -25,4 +34,3 @@ node_modules/
 # OS generated files
 .DS_Store
 Thumbs.db
-```
