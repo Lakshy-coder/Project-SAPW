@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  role      String   @default("USER")
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  jobs      Job[]
+}
+
+model Project {
+  id            String     @id @default(uuid())
+  name          String
+  policyProfile String     @default("DEFAULT")
+  documents     Document[]
+  jobs          Job[]
+}
+
+model Job {
+  id               String            @id @default(uuid())
+  projectId        String
+  userId           String
+  workflowVersion  String            @default("1.0")
+  status           String            @default("QUEUED")
+  request          Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  artifacts        Artifact[]
+  auditEvents      AuditEvent[]
+  executionReceipt ExecutionReceipt?
+  project          Project           @relation(fields: [projectId], references: [id])
+  user             User              @relation(fields: [userId], references: [id])
+  nodes            JobNode[]
+  toolExecutions   ToolExecution[]
+}
+
+model JobNode {
+  id            String         @id @default(uuid())
+  jobId         String
+  nodeType      String
+  state         String         @default("PENDING")
+  inputsHash    String?
+  outputsHash   String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  job           Job            @relation(fields: [jobId], references: [id])
+  verifications Verification[]
+}
+
+model Document {
+  id          String  @id @default(uuid())
+  projectId   String
+  version     String
+  sha256      String
+  metadata    Json?
+  accessClass String  @default("RESTRICTED")
+  chunks      Chunk[]
+  project     Project @relation(fields: [projectId], references: [id])
+}
+
+model Chunk {
+  id         String   @id @default(uuid())
+  documentId String
+  location   String
+  lexicalRef String?
+  vectorRef  String?
+  document   Document @relation(fields: [documentId], references: [id])
+}
+
+model Model {
+  id              String   @id @default(uuid())
+  provider        String
+  modelName       String
+  version         String
+  capabilities    String[]
+  resourceProfile Json?
+}
+
+model Tool {
+  id           String   @id @default(uuid())
+  version      String
+  capabilities String[]
+  inputSchema  Json
+  outputSchema Json
+  riskLevel    String
+}
+
+model ToolExecution {
+  id         String  @id @default(uuid())
+  jobId      String
+  toolId     String
+  inputsHash String
+  outputHash String?
+  durationMs Int?
+  status     String  @default("RUNNING")
+  job        Job     @relation(fields: [jobId], references: [id])
+}
+
+model Verification {
+  id           String  @id @default(uuid())
+  nodeId       String
+  verifierType String
+  status       String  @default("PENDING")
+  evidence     Json?
+  version      String
+  node         JobNode @relation(fields: [nodeId], references: [id])
+}
+
+model Artifact {
+  id              String  @id @default(uuid())
+  jobId           String
+  type            String
+  path            String
+  sha256          String
+  templateVersion String?
+  job             Job     @relation(fields: [jobId], references: [id])
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  jobId        String
+  seq          Int      @default(autoincrement())
+  parentHashes String[]
+  inputHash    String
+  outputHash   String
+  blockHash    String
+  createdAt    DateTime @default(now())
+  job          Job      @relation(fields: [jobId], references: [id])
+}
+
+model ExecutionReceipt {
+  id              String @id @default(uuid())
+  jobId           String @unique
+  rootHash        String
+  signature       String
+  keyId           String
+  verifierVersion String
+  job             Job    @relation(fields: [jobId], references: [id])
+}
+
+model Policy {
+  id            String   @id @default(uuid())
+  version       String
+  rules         Json
+  effectiveFrom DateTime @default(now())
+  scope         String
+}

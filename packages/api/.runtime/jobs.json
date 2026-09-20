@@ -1,0 +1,314 @@
+{
+  "30fc9959-ba23-4e94-8702-dcde0c33c1d1": {
+    "id": "30fc9959-ba23-4e94-8702-dcde0c33c1d1",
+    "projectId": "default",
+    "userId": "user-admin-001",
+    "workflowVersion": "1.0",
+    "status": "FAILED",
+    "createdAt": "2026-09-10T20:33:09.966Z",
+    "updatedAt": "2026-09-10T20:38:10.075Z",
+    "request": {
+      "intent": "Explain this C++ code and identify any bugs:\n\n#include <iostream>\nusing namespace std;\nint main() {\n    int a, b;\n    cin >> a >> b;\n    cout << \"Average: \" << a + b / 2;\n    return 0;\n}",
+      "riskLevel": "LOW",
+      "rawRequest": {
+        "designPressureMPa": 1.5,
+        "outsideDiameterMM": 200,
+        "allowableStressMPa": 100,
+        "weldJointFactor": 1,
+        "yCoefficient": 0.4
+      },
+      "rawInput": {
+        "designPressureMPa": 1.5,
+        "outsideDiameterMM": 200,
+        "allowableStressMPa": 100,
+        "weldJointFactor": 1,
+        "yCoefficient": 0.4
+      },
+      "userPermissions": [
+        "*"
+      ],
+      "capabilities": [
+        "SIGNED_AUDIT",
+        "CODE_EXECUTION",
+        "GENERAL_REASONING"
+      ]
+    },
+    "nodes": [
+      {
+        "id": "75959cc2-955b-4d4e-8700-92c85a32c8c6",
+        "jobId": "30fc9959-ba23-4e94-8702-dcde0c33c1d1",
+        "type": "INTENT_EXTRACTION",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:33:09.988Z",
+        "updatedAt": "2026-09-10T20:33:09.988Z"
+      },
+      {
+        "id": "14f72e69-e939-4f9c-9130-566acbe09545",
+        "jobId": "30fc9959-ba23-4e94-8702-dcde0c33c1d1",
+        "type": "POLICY_PRECHECK",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:33:09.988Z",
+        "updatedAt": "2026-09-10T20:33:09.988Z"
+      },
+      {
+        "id": "06e4872c-12ea-4b6d-a744-b3e2cd73696a",
+        "jobId": "30fc9959-ba23-4e94-8702-dcde0c33c1d1",
+        "type": "SIGNED_AUDIT",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:33:09.988Z",
+        "updatedAt": "2026-09-10T20:33:09.988Z"
+      },
+      {
+        "id": "ea55d4cb-69be-47ff-9780-291670ab33ab",
+        "jobId": "30fc9959-ba23-4e94-8702-dcde0c33c1d1",
+        "type": "CODE_EXECUTION",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:33:09.988Z",
+        "updatedAt": "2026-09-10T20:33:09.988Z"
+      },
+      {
+        "id": "733b5fc6-0a65-4f17-8557-014eb0838a88",
+        "jobId": "30fc9959-ba23-4e94-8702-dcde0c33c1d1",
+        "type": "REASONING",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:33:09.988Z",
+        "updatedAt": "2026-09-10T20:33:09.988Z"
+      },
+      {
+        "id": "b3f669b8-4ee1-44a5-aeb0-06b0119e0b46",
+        "jobId": "30fc9959-ba23-4e94-8702-dcde0c33c1d1",
+        "type": "VERIFICATION_GATE",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:33:09.988Z",
+        "updatedAt": "2026-09-10T20:33:09.988Z"
+      },
+      {
+        "id": "fd8a7a24-f5b9-4e10-b158-346e3694092b",
+        "jobId": "30fc9959-ba23-4e94-8702-dcde0c33c1d1",
+        "type": "EVIDENCE_SEALING",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:33:09.988Z",
+        "updatedAt": "2026-09-10T20:33:09.988Z"
+      },
+      {
+        "id": "f9fb5e42-3692-4fd8-ac08-ec07fe527969",
+        "jobId": "30fc9959-ba23-4e94-8702-dcde0c33c1d1",
+        "type": "FINAL_DELIVERY",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:33:09.988Z",
+        "updatedAt": "2026-09-10T20:33:09.988Z"
+      }
+    ]
+  },
+  "02689779-da6f-47aa-9091-61b20715f742": {
+    "id": "02689779-da6f-47aa-9091-61b20715f742",
+    "projectId": "default",
+    "userId": "user-admin-001",
+    "workflowVersion": "1.0",
+    "status": "FAILED",
+    "createdAt": "2026-09-10T20:46:17.288Z",
+    "updatedAt": "2026-09-10T20:51:17.375Z",
+    "request": {
+      "intent": "Calculate the total production cost for 2,500 units if the raw material cost is ₹185 per unit, labor cost is ₹72 per unit, overhead cost is 12% of the combined raw material and labor cost, and there is a fixed setup cost of ₹45,000. Also calculate the average cost per unit.",
+      "riskLevel": "LOW",
+      "rawRequest": {
+        "designPressureMPa": 1.5,
+        "outsideDiameterMM": 200,
+        "allowableStressMPa": 100,
+        "weldJointFactor": 1,
+        "yCoefficient": 0.4
+      },
+      "rawInput": {
+        "designPressureMPa": 1.5,
+        "outsideDiameterMM": 200,
+        "allowableStressMPa": 100,
+        "weldJointFactor": 1,
+        "yCoefficient": 0.4
+      },
+      "userPermissions": [
+        "*"
+      ],
+      "capabilities": [
+        "SIGNED_AUDIT",
+        "CODE_EXECUTION",
+        "GENERAL_REASONING"
+      ]
+    },
+    "nodes": [
+      {
+        "id": "cf502980-dc56-46d8-8cbe-f3c3a6c24957",
+        "jobId": "02689779-da6f-47aa-9091-61b20715f742",
+        "type": "INTENT_EXTRACTION",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:46:17.304Z",
+        "updatedAt": "2026-09-10T20:46:17.304Z"
+      },
+      {
+        "id": "14517281-4519-4442-9308-2ce243023f1f",
+        "jobId": "02689779-da6f-47aa-9091-61b20715f742",
+        "type": "POLICY_PRECHECK",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:46:17.304Z",
+        "updatedAt": "2026-09-10T20:46:17.304Z"
+      },
+      {
+        "id": "df31c7f9-742f-4294-9d44-44b5ab8c00bb",
+        "jobId": "02689779-da6f-47aa-9091-61b20715f742",
+        "type": "SIGNED_AUDIT",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:46:17.304Z",
+        "updatedAt": "2026-09-10T20:46:17.304Z"
+      },
+      {
+        "id": "7a086d69-b4fb-4877-9aca-8c6d51eef345",
+        "jobId": "02689779-da6f-47aa-9091-61b20715f742",
+        "type": "CODE_EXECUTION",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:46:17.304Z",
+        "updatedAt": "2026-09-10T20:46:17.304Z"
+      },
+      {
+        "id": "db206237-3346-49bb-bb81-6391b6855fc0",
+        "jobId": "02689779-da6f-47aa-9091-61b20715f742",
+        "type": "REASONING",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:46:17.304Z",
+        "updatedAt": "2026-09-10T20:46:17.304Z"
+      },
+      {
+        "id": "f40a1793-5fd5-4cfc-92db-4a46b1c05894",
+        "jobId": "02689779-da6f-47aa-9091-61b20715f742",
+        "type": "VERIFICATION_GATE",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:46:17.304Z",
+        "updatedAt": "2026-09-10T20:46:17.304Z"
+      },
+      {
+        "id": "becd8bbb-7314-456d-b7de-a38ce5009a8b",
+        "jobId": "02689779-da6f-47aa-9091-61b20715f742",
+        "type": "EVIDENCE_SEALING",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:46:17.304Z",
+        "updatedAt": "2026-09-10T20:46:17.304Z"
+      },
+      {
+        "id": "9cef1742-0a78-45a6-a609-45edbe12c544",
+        "jobId": "02689779-da6f-47aa-9091-61b20715f742",
+        "type": "FINAL_DELIVERY",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:46:17.304Z",
+        "updatedAt": "2026-09-10T20:46:17.304Z"
+      }
+    ]
+  },
+  "5872ba94-9c17-45c7-bffe-f018af04cbbb": {
+    "id": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+    "projectId": "default",
+    "userId": "user-admin-001",
+    "workflowVersion": "1.0",
+    "status": "FAILED",
+    "createdAt": "2026-09-10T20:48:37.145Z",
+    "updatedAt": "2026-09-10T20:53:37.478Z",
+    "request": {
+      "intent": "Calculate required pipe wall thickness using the supplied design parameters and the applicable engineering standard.",
+      "riskLevel": "LOW",
+      "rawRequest": {
+        "designPressureMPa": 1.5,
+        "outsideDiameterMM": 200,
+        "allowableStressMPa": 100,
+        "weldJointFactor": 1,
+        "yCoefficient": 0.4
+      },
+      "rawInput": {
+        "designPressureMPa": 1.5,
+        "outsideDiameterMM": 200,
+        "allowableStressMPa": 100,
+        "weldJointFactor": 1,
+        "yCoefficient": 0.4
+      },
+      "userPermissions": [
+        "*"
+      ],
+      "capabilities": [
+        "ASME_CALCULATION",
+        "SOP_RETRIEVAL",
+        "SIGNED_AUDIT",
+        "GENERAL_REASONING"
+      ]
+    },
+    "nodes": [
+      {
+        "id": "c6d291c5-3215-4665-9e6d-6b3c6111c3d6",
+        "jobId": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+        "type": "INTENT_EXTRACTION",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:48:37.207Z",
+        "updatedAt": "2026-09-10T20:48:37.207Z"
+      },
+      {
+        "id": "77376764-3f11-4e3b-90a2-2a75d2cf9fb1",
+        "jobId": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+        "type": "POLICY_PRECHECK",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:48:37.207Z",
+        "updatedAt": "2026-09-10T20:48:37.207Z"
+      },
+      {
+        "id": "4da28c87-6d4e-4b2d-9ea0-f59dc313fa63",
+        "jobId": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+        "type": "ASME_CALCULATION",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:48:37.207Z",
+        "updatedAt": "2026-09-10T20:48:37.207Z"
+      },
+      {
+        "id": "35a64329-6f7d-45b4-97d4-3e42ffd1bbe4",
+        "jobId": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+        "type": "SOP_RETRIEVAL",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:48:37.207Z",
+        "updatedAt": "2026-09-10T20:48:37.207Z"
+      },
+      {
+        "id": "43cd6470-2090-4870-b08c-bdc04e9ba8b4",
+        "jobId": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+        "type": "SIGNED_AUDIT",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:48:37.207Z",
+        "updatedAt": "2026-09-10T20:48:37.207Z"
+      },
+      {
+        "id": "d53a76c4-eca3-4ad8-ac4f-01ea48def676",
+        "jobId": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+        "type": "REASONING",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:48:37.207Z",
+        "updatedAt": "2026-09-10T20:48:37.207Z"
+      },
+      {
+        "id": "5162d882-161a-4a0b-a756-b3a4938b06b0",
+        "jobId": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+        "type": "VERIFICATION_GATE",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:48:37.207Z",
+        "updatedAt": "2026-09-10T20:48:37.207Z"
+      },
+      {
+        "id": "75421a46-e89a-462e-82b1-3076dac24a0d",
+        "jobId": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+        "type": "EVIDENCE_SEALING",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:48:37.207Z",
+        "updatedAt": "2026-09-10T20:48:37.207Z"
+      },
+      {
+        "id": "e5a53e96-9bd7-47aa-88c9-b94a010dae7a",
+        "jobId": "5872ba94-9c17-45c7-bffe-f018af04cbbb",
+        "type": "FINAL_DELIVERY",
+        "state": "QUEUED",
+        "createdAt": "2026-09-10T20:48:37.207Z",
+        "updatedAt": "2026-09-10T20:48:37.207Z"
+      }
+    ]
+  }
+}

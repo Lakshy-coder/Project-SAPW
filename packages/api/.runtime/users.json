@@ -1,0 +1,35 @@
+[
+  {
+    "id": "user-admin-001",
+    "username": "admin",
+    "passwordHash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+    "role": "ADMIN",
+    "permissions": [
+      "*"
+    ],
+    "createdAt": "2026-09-09T18:04:24.604Z"
+  },
+  {
+    "id": "user-eng-001",
+    "username": "engineer",
+    "passwordHash": "80ca306ac6e68366dd0a26125c9647e0c61fac6668cec6016f5fe30fb12e99bd",
+    "role": "ENGINEER",
+    "permissions": [
+      "jobs:create",
+      "jobs:read",
+      "tools:engineering",
+      "artifacts:generate"
+    ],
+    "createdAt": "2026-09-09T18:04:24.604Z"
+  },
+  {
+    "id": "user-view-001",
+    "username": "viewer",
+    "passwordHash": "65375049b9e4d7cad6c9ba286fdeb9394b28135a3e84136404cfccfdcc438894",
+    "role": "VIEWER",
+    "permissions": [
+      "jobs:read"
+    ],
+    "createdAt": "2026-09-09T18:04:24.604Z"
+  }
+]
