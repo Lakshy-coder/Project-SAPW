@@ -1,6 +1,6 @@
-# SIH2K26 Sovereign Industrial AI Workbench
+# Sovereign Industrial AI Workbench
 
-This repository is a local-first sovereign industrial AI prototype aligned to the architecture baseline for the SIH 2026 workbench.
+This repository is a local-first sovereign industrial AI prototype designed for secure, privacy-preserving execution in enterprise environments.
 
 ## Trust model
 
